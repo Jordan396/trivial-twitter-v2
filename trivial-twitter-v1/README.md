@@ -15,7 +15,6 @@ Simple socket application in C, with the following features:
 │   ├── ttweetcli       // Executable for the client side
 │   ├── ttweetcli.c     // Implementation file for the client side
 │   └── ttweetcli.h     // Header file used for ttweetcli.c
-├── configuration.txt
 ├── README.md
 └── server
     ├── ttweetser       // Executable for the client side

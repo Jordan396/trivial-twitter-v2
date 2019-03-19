@@ -1,5 +1,5 @@
 /****************************************************************************
- * @author: Jordan396 <https://github.com/Jordan396/Trivial-Twitter-Sockets>*
+ * @author: Jordan396 <https://github.com/Jordan396/trivial-twitter-v2>     *
  *                                                                          *
  * This file was heavily adapted from the source code in:                   *
  *   "TCP/IP Sockets in C: Practical Guide for Programmers"                 *
@@ -19,12 +19,21 @@
   * This header file has been created to describe the functions in ttweetcli.c.
   */
 
+/**
+ * TODO:
+ * Add documentation for 
+ * 
+ * 
+ * 
+ */ 
+
 #include <stdio.h>      /* for printf() and fprintf() */
 #include <sys/socket.h> /* for socket(), bind(), and connect() */
 #include <arpa/inet.h>  /* for sockaddr_in and inet_ntoa() */
 #include <stdlib.h>     /* for atoi() and exit() */
 #include <string.h>     /* for memset() */
 #include <unistd.h>     /* for close() */
+#include <ctype.h>      /* for char validation */
 
 #define RCVBUFSIZE 32 /* Size of receive buffer */
 
@@ -37,3 +46,13 @@
  * @return void
  */
 void DieWithError(char *errorMessage);
+
+/**
+ * @brief 
+ *
+ * Description Prints the error message and exits the program gracefully.
+ *
+ * @param errorMessage Error message to be printed.
+ * @return void
+ */
+void parseHashtags (char * validHashtags[], int * numValidHashtags, char * inputHashtags);

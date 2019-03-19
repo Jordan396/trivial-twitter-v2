@@ -1,5 +1,5 @@
 /****************************************************************************
- * @author: Jordan396 <https://github.com/Jordan396/Trivial-Twitter-Sockets>*
+ * @author: Jordan396 <https://github.com/Jordan396/trivial-twitter-v2>     *
  *                                                                          *
  * This file was heavily adapted from the source code in:                   *
  *   "TCP/IP Sockets in C: Practical Guide for Programmers"                 *

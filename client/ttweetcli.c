@@ -38,12 +38,13 @@
 #include "cJSON.h"
 
 void DieWithError(char *errorMessage);                                                                                             /* Handles connection errors */
-void RejectWithError(char *errorMessage, char *validHashtags[], int *numValidHashtags);                                            /* Handles errors in user input */
+void RejectWithError(char *errorMessage, char *validHashtags[], int *numValidHashtags);                                            /* Handles input errors during connection */
 void parseHashtags(char *validHashtags[], int *numValidHashtags, char *inputHashtags);                                             /* Parses hashtags from user input */
 void saveCurrentHashtag(char *currentHashtagBuffer, int *currentHashtagBufferIndex, char *validHashtags[], int *numValidHashtags); /* Save current hashtag buffer */
-void checkIfDuplicatesExists(char *stringArray[], int *numElementsInArray);                                                        /* Checks for duplicates in string array */
-void ttweetToJson(cJSON *jobj, char *ttweetString, char *validHashtags[], int numValidHashtags);                                   /* Creates a ttweet JSON object */
-void freeDynamicStringArray(char *stringArray[], int numElementsInArray);                                                          /* Deallocates memory from dynamic string array */
+void ttweetToJson(cJSON *jobj, char *ttweetString, char *validHashtags[], int numValidHashtags);                                   /* Converts user input to a ttweet JSON object */
+void resetClientVariables(char *validHashtags[], int *numValidHashtags, cJSON *jobj);                                              /* Resets client variables to prepare for the next command */
+void deallocateStringArray(char *stringArray[], int numStringsInArray);                                                            /* Deallocates memory from a dynamic string array */
+int duplicateStringExists(char *stringArray[], int numStringsInArray);                                                             /* Checks for duplicates in string array */
 
 int main(int argc, char *argv[])
 {
@@ -66,11 +67,11 @@ int main(int argc, char *argv[])
   char *inputHashtags;                                               /* User input for hashtags */
   int bytesRcvd;                                                     /* Bytes read in single recv() */
 
+  inputHashtags = "#1#2#pop#mom";
   jobj = cJSON_CreateObject();
   parseHashtags(validHashtags, &numValidHashtags, inputHashtags);
   ttweetToJson(jobj, "ttweet message!", validHashtags, numValidHashtags);
-  freeDynamicStringArray(validHashtags, numValidHashtags);
-  inputHashtags = "#1#2#pop#mom";
+  resetClientVariables(validHashtags, numValidHashtags, jobj);
 
   //   if ((argc < 4) || (argc > 5)) /* Test for correct number of arguments */
   //   {
@@ -183,7 +184,7 @@ void DieWithError(char *errorMessage)
 void RejectWithError(char *errorMessage, char *validHashtags[], int *numValidHashtags)
 {
   perror(errorMessage);
-  freeDynamicStringArray(validHashtags, *numValidHashtags);
+  deallocateStringArray(validHashtags, *numValidHashtags);
   *numValidHashtags = 0;
 }
 
@@ -246,11 +247,14 @@ void parseHashtags(char *validHashtags[], int *numValidHashtags, char *inputHash
   /* Reached end of inputHashtags */
   saveCurrentHashtag(currentHashtagBuffer, &currentHashtagBufferIndex, validHashtags, numValidHashtags);
 
-  if (numConsecutiveHashes > 8)
+  if (numValidHashtags > 8)
   { /* Limit of 8 hashtags exceeded */
     RejectWithError("Invalid hashtag(s)! Limit of 8 hashtags exceeded.", validHashtags, numValidHashtags);
   }
-  checkIfDuplicatesExists(validHashtags, numValidHashtags);
+  if (duplicateStringExists(validHashtags, numValidHashtags))
+  { /* validHashtags contain duplicate hashtags */
+    RejectWithError("Invalid hashtag(s)! Duplicate hashtags detected.", validHashtags, numValidHashtags);
+  }
 }
 
 /** \copydoc saveCurrentHashtag */
@@ -267,19 +271,20 @@ void saveCurrentHashtag(char *currentHashtagBuffer, int *currentHashtagBufferInd
   (*numValidHashtags)++;
 }
 
-/** \copydoc checkIfDuplicatesExists */
-void checkIfDuplicatesExists(char *stringArray[], int *numElementsInArray)
+/** \copydoc duplicateStringExists */
+int duplicateStringExists(char *stringArray[], int numStringsInArray)
 {
-  for (int i = 0; i < numElementsInArray - 1; i++)
+  for (int i = 0; i < numStringsInArray - 1; i++)
   {
-    for (int j = i + 1; j < numElementsInArray; j++)
+    for (int j = i + 1; j < numStringsInArray; j++)
     {
       if (strcmp(stringArray[i], stringArray[j]) == 0)
       {
-        RejectWithError("Invalid hashtag(s)! Duplicate hashtags detected.", stringArray, numElementsInArray);
+        return 1;
       }
     }
   }
+  return 0;
 }
 
 /** \copydoc ttweetToJson */
@@ -296,10 +301,18 @@ void ttweetToJson(cJSON *jobj, char *ttweetString, char *validHashtags[], int nu
   printf("The json object created: %s\n", cJSON_Print(jobj));
 }
 
-/** \copydoc freeDynamicStringArray */
-void freeDynamicStringArray(char *stringArray[], int numElementsInArray)
+/** \copydoc resetClientVariables */
+void resetClientVariables(char *validHashtags[], int *numValidHashtags, cJSON *jobj)
 {
-  for (int i = 0; i < numElementsInArray; i++)
+  deallocateStringArray(validHashtags, *numValidHashtags);
+  *numValidHashtags = 0;
+  cJSON_Delete(jobj);
+}
+
+/** \copydoc deallocateStringArray */
+void deallocateStringArray(char *stringArray[], int numStringsInArray)
+{
+  for (int i = 0; i < numStringsInArray; i++)
   {
     free(stringArray[i]);
   }

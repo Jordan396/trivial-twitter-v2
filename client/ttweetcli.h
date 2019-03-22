@@ -26,7 +26,7 @@
  * - saveCurrentHashtag
  * - checkDuplicatesExists
  * - ttweetToJson
- * - freeDynamicStringArray
+ * - deallocateStringArray
  * 
  */
 
@@ -38,13 +38,14 @@
 #include <unistd.h>     /* for close() */
 #include <ctype.h>      /* for char validation */
 
-#define RCVBUFSIZE 32 /* Size of receive buffer */
-#define MAX_HASHTAG_CNT 15
+#define RCVBUFSIZE 32      /* Size of receive buffer */
+#define MAX_HASHTAG_CNT 15 /* Limit for hashtag count */
 
 /**
- * @brief Error handling function
+ * @brief Handles connection errors
  *
- * Description Prints the error message and exits the program gracefully.
+ * Description Prints the error message, closes the connection
+ * to the server and exits the program gracefully.
  *
  * @param errorMessage Error message to be printed.
  * @return void
@@ -52,51 +53,89 @@
 void DieWithError(char *errorMessage);
 
 /**
- * @brief 
+ * @brief Handles input errors during connection
  *
- * Description Prints the error message and exits the program gracefully.
+ * Description Prints the error message and resets
+ * ttweet variables. Connection to server persists.
  *
  * @param errorMessage Error message to be printed.
+ * @param validHashtags Hashtags in a string array
+ * @param numValidHashtags Number of hashtags in validHashtags
+ * @return void
+ */
+void RejectWithError(char *errorMessage, char *validHashtags[], int *numValidHashtags);
+
+/**
+ * @brief Parses hashtags from user input
+ *
+ * Description Validates hashtag input. Valid hashtags are stored in
+ * the string array validHashtags. Hashtag count is tracked using numValidHashtags.
+ *
+ * @param validHashtags Hashtags in a string array
+ * @param numValidHashtags Number of hashtags in validHashtags
+ * @param inputHashtags Hashatag input from the user.
  * @return void
  */
 void parseHashtags(char *validHashtags[], int *numValidHashtags, char *inputHashtags);
 
 /**
- * @brief 
+ * @brief Save current hashtag buffer
  *
- * Description Prints the error message and exits the program gracefully.
+ * Description Allocates memory to validHashtag and stores the current hashtag buffer.
+ * Prepare the hashtag buffer to receive the next hashtag.
  *
- * @param errorMessage Error message to be printed.
+ * @param currentHashtagBuffer Buffer to store the current hashtag
+ * @param currentHashtagBufferIndex Index of the last known char in hashtag buffer
+ * @param validHashtags Hashtags in a string array
+ * @param numValidHashtags Number of hashtags in validHashtags
  * @return void
  */
 void saveCurrentHashtag(char *currentHashtagBuffer, int *currentHashtagBufferIndex, char *validHashtags[], int *numValidHashtags);
 
 /**
- * @brief 
+ * @brief Checks for duplicates in string array
  *
- * Description Prints the error message and exits the program gracefully.
+ * Description If a hashtag appears more than once, an error is thrown.
  *
- * @param errorMessage Error message to be printed.
- * @return void
+ * @param stringArray Strings in an array
+ * @param numStringsInArray Number of strings in stringArray
+ * @return int 1 if duplicates exist; 0 otherwise. 
  */
-void checkDuplicatesExists(char *validHashtags[], int numValidHashtags);
+int checkDuplicatesExists(char *stringArray[], int numStringsInArray);
 
 /**
- * @brief 
+ * @brief Converts user input to a ttweet JSON object
  *
  * Description Prints the error message and exits the program gracefully.
  *
- * @param errorMessage Error message to be printed.
+ * @param jobj cJSON object to store ttweet
+ * @param ttweetString Message to be ttweeted
+ * @param validHashtags Hashtags in a string array
+ * @param numValidHashtags Number of hashtags in validHashtags
  * @return void
  */
 void ttweetToJson(cJSON *jobj, char *ttweetString, char *validHashtags[], int numValidHashtags);
 
 /**
- * @brief 
+ * @brief Deallocates memory from a dynamic string array
  *
- * Description Prints the error message and exits the program gracefully.
+ * Description First numStringsInArray elements from stringArray are freed.
  *
- * @param errorMessage Error message to be printed.
+ * @param stringArray String array which memory is to be deallocated
+ * @param numStringsInArray Number of elements to free in the array
  * @return void
  */
-void freeDynamicStringArray(char *stringArray[], int numElementsInArray);
+void deallocateStringArray(char *stringArray[], int numStringsInArray);
+
+/**
+ * @brief Resets client variables to prepare for the next command
+ *
+ * Description Variables relating to a particular ttweet command
+ * are cleared/reset, making it ready for the next command.
+ *
+ * @param validHashtags Hashtags in a string array
+ * @param numValidHashtags Number of hashtags in validHashtags
+ * @param jobj cJSON object to store ttweet
+ * @return void
+ */
+void resetClientVariables(char *validHashtags[], int *numValidHashtags, cJSON *jobj);

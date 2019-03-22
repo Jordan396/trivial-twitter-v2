@@ -25,7 +25,8 @@
  * - parseHashtags
  * - saveCurrentHashtag
  * - checkDuplicatesExists
- * 
+ * - ttweetToJson
+ * - freeDynamicStringArray
  * 
  */
 
@@ -79,3 +80,23 @@ void saveCurrentHashtag(char *currentHashtagBuffer, int *currentHashtagBufferInd
  * @return void
  */
 void checkDuplicatesExists(char *validHashtags[], int numValidHashtags);
+
+/**
+ * @brief 
+ *
+ * Description Prints the error message and exits the program gracefully.
+ *
+ * @param errorMessage Error message to be printed.
+ * @return void
+ */
+void ttweetToJson(cJSON *jobj, char *ttweetString, char *validHashtags[], int numValidHashtags);
+
+/**
+ * @brief 
+ *
+ * Description Prints the error message and exits the program gracefully.
+ *
+ * @param errorMessage Error message to be printed.
+ * @return void
+ */
+void freeDynamicStringArray(char *stringArray[], int numElementsInArray);

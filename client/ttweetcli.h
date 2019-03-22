@@ -10,7 +10,7 @@
  *   repository. If not, see <https://opensource.org/licenses/MIT>.         *
  ****************************************************************************/
 
- /**
+/**
   * @file ttweetcli.h
   * @author Jordan396
   * @date 14 February 2019
@@ -21,11 +21,13 @@
 
 /**
  * TODO:
- * Add documentation for 
+ * Add documentation for:
+ * - parseHashtags
+ * - saveCurrentHashtag
+ * - checkDuplicatesExists
  * 
  * 
- * 
- */ 
+ */
 
 #include <stdio.h>      /* for printf() and fprintf() */
 #include <sys/socket.h> /* for socket(), bind(), and connect() */
@@ -36,6 +38,7 @@
 #include <ctype.h>      /* for char validation */
 
 #define RCVBUFSIZE 32 /* Size of receive buffer */
+#define MAX_HASHTAG_CNT 15
 
 /**
  * @brief Error handling function
@@ -55,4 +58,24 @@ void DieWithError(char *errorMessage);
  * @param errorMessage Error message to be printed.
  * @return void
  */
-void parseHashtags (char * validHashtags[], int * numValidHashtags, char * inputHashtags);
+void parseHashtags(char *validHashtags[], int *numValidHashtags, char *inputHashtags);
+
+/**
+ * @brief 
+ *
+ * Description Prints the error message and exits the program gracefully.
+ *
+ * @param errorMessage Error message to be printed.
+ * @return void
+ */
+void saveCurrentHashtag(char *currentHashtagBuffer, int *currentHashtagBufferIndex, char *validHashtags[], int *numValidHashtags);
+
+/**
+ * @brief 
+ *
+ * Description Prints the error message and exits the program gracefully.
+ *
+ * @param errorMessage Error message to be printed.
+ * @return void
+ */
+void checkDuplicatesExists(char *validHashtags[], int numValidHashtags);

@@ -22,7 +22,7 @@
   * 
   * ttweetcli creates a persistent connection to a ttweetser server. Once a connection
   * has been established, the ttweetcli can run the following commands:
-  * 1. tweet​ “<150 char max tweet>” <Hashtag>
+  * 1. tweet​ "<150 char max tweet>" <Hashtag>
   *   - Upload tweet to server.
   * 2. subscribe​ <Hashtag>
   *   - Subscribe to a hashtag (max of 3).
@@ -35,21 +35,34 @@
   */
 
 #include "ttweetcli.h"
+#include "cJSON.h"
 
-void DieWithError(char *errorMessage); /* Error handling function */
-void parseHashtags(char *validHashtags[], int *numValidHashtags, char *inputHashtags);
+void DieWithError(char *errorMessage);                                                                                             /* Error handling function */
+void parseHashtags(char *validHashtags[], int *numValidHashtags, char *inputHashtags);                                             /* Error handling function */
+void saveCurrentHashtag(char *currentHashtagBuffer, int *currentHashtagBufferIndex, char *validHashtags[], int *numValidHashtags); /* Error handling function */
+void checkDuplicatesExists(char *validHashtags[], int numValidHashtags);                                                           /* Error handling function */
 
 int main(int argc, char *argv[])
 {
-  char inputHashtags[] = "#1#das#pop";
-  char *validHashtags[15];
+  char inputHashtags[] = "#1#2#pop#mom#pop";
+  char *validHashtags[MAX_HASHTAG_CNT]; /* Error handling function */
   int numValidHashtags;
+  '''
+  json_object *jobj = json_object_new_object(); /*Creating a json object*/
 
   parseHashtags(validHashtags, &numValidHashtags, inputHashtags);
   for (int i = 0; i < numValidHashtags; i++)
   {
     printf("%s\n", validHashtags[i]);
   }
+
+  json_object *jstring = json_object_new_string("Joys of Programming"); /*Creating a json string*/
+  json_object *jarray = json_object_new_array();                        /*Creating a json array*/
+  for (int i=0; i<numValidHashtags;i++){
+    json_object_array_add(jarray, json_object_new_string(validHashtags[i]));
+  }
+  printf ("The json object created: %sn",json_object_to_json_string(jobj));
+  '''
 
   //   char uploadRequestStr[32] = "vQa&yXWS5V!6P+dF-%$ArTz4$dwbebC\0";   /* Passphrase to initiate upload */
   //   char downloadRequestStr[32] = "Uep5tubUccXb=?u-x?BbsL2U-vb6j6s\0"; /* Passphrase to initiate download */
@@ -187,17 +200,17 @@ void parseHashtags(char *validHashtags[], int *numValidHashtags, char *inputHash
 
   if (inputHashtags[0] != '#')
   { /* Hashtag must begin with # */
-    DieWithError("Invalid hashtag! Hashtag must begin with #.");
+    DieWithError("Invalid hashtag(s)! Hashtag(s) must begin with #.");
   }
 
-  if (inputHashtags[lenInputHashtags-1] == '#')
+  if (inputHashtags[lenInputHashtags - 1] == '#')
   { /* Hashtag cannot end with # */
-    DieWithError("Invalid hashtag! Hashtag cannot end with #.");
+    DieWithError("Invalid hashtag(s)! Hashtag(s) cannot end with #.");
   }
 
   if (lenInputHashtags < 2 || lenInputHashtags > 25)
   { /* Hashtag must be between 2 to 25 chars long */
-    DieWithError("invalid hashtag! Hashtag must be between 2 to 25 chars long.");
+    DieWithError("Invalid hashtag(s)! Hashtag(s) must be between 2 to 25 chars long.");
   }
 
   while (inputHashtags[inputHashtagsCharIndex] != '\0')
@@ -206,16 +219,12 @@ void parseHashtags(char *validHashtags[], int *numValidHashtags, char *inputHash
     {
       numConsecutiveHashes++;
       if (numConsecutiveHashes > 1)
-      { /* Hashtag contains consecutive # - throw error */
-        DieWithError("Invalid hashtag! Hashtags cannot contain consecutive #.");
+      { /* Hashtag contains consecutive # */
+        DieWithError("Invalid hashtag(s)! Hashtag(s) cannot contain consecutive #.");
       }
       else
       { /* Reached end of current hashtag. Save and prepare to parse next hashtag. */
-        currentHashtagBuffer[currentHashtagBufferIndex] = '\0';
-        validHashtags[*numValidHashtags] = malloc(currentHashtagBufferIndex + 1);
-        strcpy(validHashtags[*numValidHashtags], currentHashtagBuffer);
-        currentHashtagBufferIndex = 0;
-        (*numValidHashtags)++;
+        saveCurrentHashtag(currentHashtagBuffer, &currentHashtagBufferIndex, validHashtags, numValidHashtags);
       }
     }
     else if (isalnum(inputHashtags[inputHashtagsCharIndex]) != 0)
@@ -226,14 +235,47 @@ void parseHashtags(char *validHashtags[], int *numValidHashtags, char *inputHash
     }
     else
     { /* char is not alphanumeric or # */
-      DieWithError("Invalid hashtag! Hashtag contains invalid characters.");
+      DieWithError("Invalid hashtag(s)! Hashtag(s) contains invalid characters.");
     }
     inputHashtagsCharIndex++;
   }
 
   /* Reached end of inputHashtags */
-  currentHashtagBuffer[currentHashtagBufferIndex] = '\0';
-  validHashtags[*numValidHashtags] = malloc(currentHashtagBufferIndex + 1);
+  saveCurrentHashtag(currentHashtagBuffer, &currentHashtagBufferIndex, validHashtags, numValidHashtags);
+
+  if (numConsecutiveHashes > 8)
+  { /* Limit of 8 hashtags exceeded */
+    DieWithError("Invalid hashtag(s)! Limit of 8 hashtags exceeded.");
+  }
+
+  checkDuplicatesExists(validHashtags, *numValidHashtags);
+}
+
+/** \copydoc saveCurrentHashtag */
+void saveCurrentHashtag(char *currentHashtagBuffer, int *currentHashtagBufferIndex, char *validHashtags[], int *numValidHashtags)
+{
+  currentHashtagBuffer[*currentHashtagBufferIndex] = '\0';
+  if (strcmp(currentHashtagBuffer, "ALL") == 0)
+  { /* Hashtag #ALL is not allowed */
+    DieWithError("Invalid hashtag(s)! Hashtag #ALL is not allowed.");
+  }
+  validHashtags[*numValidHashtags] = (char *)malloc((*currentHashtagBufferIndex + 1) * sizeof(char));
   strcpy(validHashtags[*numValidHashtags], currentHashtagBuffer);
+  *currentHashtagBufferIndex = 0;
   (*numValidHashtags)++;
+}
+
+/** \copydoc checkDuplicatesExists */
+void checkDuplicatesExists(char *validHashtags[], int numValidHashtags)
+{
+  for (int i = 0; i < numValidHashtags - 1; i++)
+  {
+    for (int j = i + 1; j < numValidHashtags; j++)
+    {
+      if (strcmp(validHashtags[i], validHashtags[j]) == 0)
+      {
+        DieWithError("Invalid hashtag(s)! Duplicate hashtags detected.");
+      }
+    }
+  }
 }

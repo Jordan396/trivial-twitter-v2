@@ -22,11 +22,6 @@
 /**
  * TODO:
  * Add documentation for:
- * - parseHashtags
- * - saveCurrentHashtag
- * - checkDuplicatesExists
- * - ttweetToJson
- * - deallocateStringArray
  * 
  */
 

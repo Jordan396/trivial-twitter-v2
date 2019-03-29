@@ -30,6 +30,6 @@ void DieWithError(char *errorMessage);
  * Description Prints the error message and continue program execution.
  *
  * @param errorMessage Error message to be printed.
- * @return void
+ * @return -1
  */
-void PersistWithError(char *errorMessage);
+int PersistWithError(char *errorMessage);

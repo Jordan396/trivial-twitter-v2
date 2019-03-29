@@ -35,6 +35,8 @@
 
 #define RCVBUFSIZE 32      /* Size of receive buffer */
 #define MAX_HASHTAG_CNT 15 /* Limit for hashtag count */
+#define MAX_TWEET_LEN 151
+#define MAX_HASHTAG_LEN 25
 
 /**
  * @brief Handles connection errors

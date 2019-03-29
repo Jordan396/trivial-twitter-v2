@@ -40,36 +40,37 @@
 
 void parseHashtags(char *validHashtags[], int *numValidHashtags, char *inputHashtags);                                             /* Parses hashtags from user input */
 void saveCurrentHashtag(char *currentHashtagBuffer, int *currentHashtagBufferIndex, char *validHashtags[], int *numValidHashtags); /* Save current hashtag buffer */
-void ttweetToJson(cJSON *jobj, char *ttweetString, char *validHashtags[], int numValidHashtags);                                   /* Converts user input to a ttweet JSON object */
+void ttweetToJson(cJSON *jobj, char ttweetString[], char *validHashtags[], int numValidHashtags);                                  /* Converts user input to a ttweet JSON object */
 void resetClientVariables(char *validHashtags[], int *numValidHashtags, cJSON *jobj);                                              /* Resets client variables to prepare for the next command */
 void deallocateStringArray(char *stringArray[], int numStringsInArray);                                                            /* Deallocates memory from a dynamic string array */
 int duplicateStringExists(char *stringArray[], int numStringsInArray);                                                             /* Checks for duplicates in string array */
 
 int main(int argc, char *argv[])
 {
+  /* Socket variables */
+  int sock;                          /* Socket descriptor */
+  struct sockaddr_in ttweetServAddr; /* ttweet server address */
+  unsigned short ttweetServPort;     /* ttweet server port */
+  char *servIP;                      /* Server IP address (dotted quad) */
 
-  char validUsernameKey[32] = "vQa&yXWS5V!6P+dF-%$ArTz4$dwbebC\0"; /* Passphrase to validate username */
-  int sock;                                                        /* Socket descriptor */
-  struct sockaddr_in ttweetServAddr;                               /* ttweet server address */
-  unsigned short ttweetServPort;                                   /* ttweet server port */
-  char *servIP;                                                    /* Server IP address (dotted quad) */
-  char *ttweetString;                                              /* String to be send to ttweet server */
-  char ttweetBuffer[RCVBUFSIZE];                                   /* Buffer for ttweet string */
-  unsigned int ttweetStringLen;                                    /* Length of string to ttweet */
-  char *validHashtags[MAX_HASHTAG_CNT];                            /* Array of valid hashtags */
-  int numValidHashtags;                                            /* Number of valid hashtags */
-  cJSON *jobj;                                                     /* JSON object to store ttweet */
-  char *inputHashtags;                                             /* User input for hashtags */
-  int bytesRcvd;                                                   /* Bytes read in single recv() */
-  char invalidCmdMsg;
+  /* Variables to process user commands */
+  int clientCommandCode;
+  cJSON *jobj;                          /* JSON object to store ttweet */
+  char ttweetString[MAX_TWEET_LEN];     /* String to be send to ttweet server */
+  unsigned int ttweetStringLen;         /* Length of string to ttweet */
+  char *validHashtags[MAX_HASHTAG_CNT]; /* Array of valid hashtags */
+  int numValidHashtags;                 /* Number of valid hashtags */
+  char targetHashtag[MAX_HASHTAG_LEN];
+  char *inputHashtags; /* User input for hashtags */
   char username;
   int usernameLen;
 
-  invalidCmdMsg = "Command not recognized!\nUsage: $./ttweetcl <ServerIP> <ServerPort> <Username>";
+  /* Variables used to handle transfer of data over TCP */
+  char ttweetBuffer[RCVBUFSIZE]; /* Buffer for ttweet string */
 
   if (argc != 3) /* Test for correct number of arguments */
   {
-    DieWithError(invalidCmdMsg);
+    DieWithError("Command not recognized!\nUsage: $./ttweetcl <ServerIP> <ServerPort> <Username>");
   }
 
   servIP = argv[1];               /* Server IP address (dotted quad) */
@@ -91,37 +92,51 @@ int main(int argc, char *argv[])
   if (connect(sock, (struct sockaddr *)&ttweetServAddr, sizeof(ttweetServAddr)) < 0)
     DieWithError("connect() failed");
 
-  /* Send username length to server to indicate when send() finishes */
+  /* Username length is sent to inform server when send() completes */
   short sz = htons(usernameLen); /* deals with possible endianness problems */
   if (send(sock, &sz, sizeof(short), 0) != sizeof(short))
     DieWithError("Block size: send() sent a different number of bytes than expected");
   /* Send username to server for validation */
   if (send(sock, username, usernameLen, 0) != usernameLen)
     DieWithError("Block contents: send() sent a different number of bytes than expected");
+  /* Process validation code from server */
+  validateUsername(sock);
 
-  /* Receive message from server */
-  while ((bytesRcvd = recv(sock, ttweetBuffer, RCVBUFSIZE - 1, 0)) > 0)
-  {
-    /* Receive up to the buffer size (minus 1 to leave space for
-     a null terminator) bytes from the sender */
-    ttweetBuffer[bytesRcvd] = '\0'; /* Terminate the string! */
-    printf("%s", ttweetBuffer);     /* Print the ttweetBuffer */
+  while (1)
+  { /* Loop continuously */
+    clientCommandCode = parseClientCommand(targetHashtag, ttweetString);
+
+    switch (clientCommandCode)
+    {
+    case -1:
+      break;
+    case 1:
+      /* tweet */
+      parseHashtags(validHashtags, &numValidHashtags, targetHashtag);
+      break;
+    case 2:
+      /* subscribe */
+      break;
+    case 3:
+      /* unsubscribe */
+      break;
+    case 4:
+      /* timeline */
+      break;
+    case 5:
+      /* exit */
+      close(sock);
+      exit(0);
+    default:
+      DieWithError("Unexpected error occured.");
+    }
   }
-
-  printf("\n"); /* Print a final linefeed */
-
-  close(sock);
-  exit(0);
-
+  
   ttweetStringLen = strlen(ttweetString); /* Determine message length */
-  if (ttweetStringLen > 150)
-  { /* Length of ttweetString exceeds 150 chars */
-    DieWithError("Invalid tweet! Tweet exceeded 150 characters in length.");
-  }
 
   inputHashtags = "#1#2#pop#mom";
   jobj = cJSON_CreateObject();
-  parseHashtags(validHashtags, &numValidHashtags, inputHashtags);
+  
   ttweetToJson(jobj, "ttweet message!", validHashtags, numValidHashtags);
   resetClientVariables(validHashtags, numValidHashtags, jobj);
 }
@@ -142,18 +157,17 @@ int parseHashtags(char *validHashtags[], int *numValidHashtags, char *inputHasht
 
   if (inputHashtags[0] != '#')
   { /* Hashtag must begin with # */
-    PersistWithError("Invalid hashtag(s)! Hashtag(s) must begin with #.", validHashtags, numValidHashtags);
-    return 0;
+    return PersistWithError("Invalid hashtag(s)! Hashtag(s) must begin with #.");
   }
 
   if (inputHashtags[lenInputHashtags - 1] == '#')
   { /* Hashtag cannot end with # */
-    PersistWithError("Invalid hashtag(s)! Hashtag(s) cannot end with #.", validHashtags, numValidHashtags);
+    return PersistWithError("Invalid hashtag(s)! Hashtag(s) cannot end with #.");
   }
 
   if (lenInputHashtags < 2 || lenInputHashtags > 25)
   { /* Hashtag must be between 2 to 25 chars long */
-    PersistWithError("Invalid hashtag(s)! Hashtag(s) must be between 2 to 25 chars long.", validHashtags, numValidHashtags);
+    return PersistWithError("Invalid hashtag(s)! Hashtag(s) must be between 2 to 25 chars long.");
   }
 
   while (inputHashtags[inputHashtagsCharIndex] != '\0')
@@ -163,7 +177,7 @@ int parseHashtags(char *validHashtags[], int *numValidHashtags, char *inputHasht
       numConsecutiveHashes++;
       if (numConsecutiveHashes > 1)
       { /* Hashtag contains consecutive # */
-        PersistWithError("Invalid hashtag(s)! Hashtag(s) cannot contain consecutive #.", validHashtags, numValidHashtags);
+        return PersistWithError("Invalid hashtag(s)! Hashtag(s) cannot contain consecutive #.");
       }
       else
       { /* Reached end of current hashtag. Save and prepare to parse next hashtag. */
@@ -178,7 +192,7 @@ int parseHashtags(char *validHashtags[], int *numValidHashtags, char *inputHasht
     }
     else
     { /* char is not alphanumeric or # */
-      PersistWithError("Invalid hashtag(s)! Hashtag(s) contains invalid characters.", validHashtags, numValidHashtags);
+      return PersistWithError("Invalid hashtag(s)! Hashtag(s) contains invalid characters.");
     }
     inputHashtagsCharIndex++;
   }
@@ -188,11 +202,11 @@ int parseHashtags(char *validHashtags[], int *numValidHashtags, char *inputHasht
 
   if (numValidHashtags > 8)
   { /* Limit of 8 hashtags exceeded */
-    PersistWithError("Invalid hashtag(s)! Limit of 8 hashtags exceeded.", validHashtags, numValidHashtags);
+    return PersistWithError("Invalid hashtag(s)! Limit of 8 hashtags exceeded.");
   }
   if (duplicateStringExists(validHashtags, numValidHashtags))
   { /* validHashtags contain duplicate hashtags */
-    PersistWithError("Invalid hashtag(s)! Duplicate hashtags detected.", validHashtags, numValidHashtags);
+    return PersistWithError("Invalid hashtag(s)! Duplicate hashtags detected.");
   }
 }
 
@@ -202,7 +216,7 @@ void saveCurrentHashtag(char *currentHashtagBuffer, int *currentHashtagBufferInd
   currentHashtagBuffer[*currentHashtagBufferIndex] = '\0';
   if (strcmp(currentHashtagBuffer, "ALL") == 0)
   { /* Hashtag #ALL is not allowed */
-    PersistWithError("Invalid hashtag(s)! Hashtag #ALL is not allowed.", validHashtags, numValidHashtags);
+    return PersistWithError("Invalid hashtag(s)! Hashtag #ALL is not allowed.");
   }
   validHashtags[*numValidHashtags] = (char *)malloc((*currentHashtagBufferIndex + 1) * sizeof(char));
   strcpy(validHashtags[*numValidHashtags], currentHashtagBuffer);
@@ -260,3 +274,197 @@ void deallocateStringArray(char *stringArray[], int numStringsInArray)
     free(stringArray[i]);
   }
 }
+
+void validateUsername(int sock)
+{
+  int usernameValidationCode;
+  recv(sock, &usernameValidationCode, sizeof(int), 0);
+  if (usernameValidationCode == 1)
+  { /* Username is valid */
+    printf("%s", "Username valid. Connection established successfully.\n");
+    return;
+  }
+  else
+  { /* Username is invalid */
+    DieWithError("Username invalid. Please select a different username and try again.");
+  }
+}
+
+int parseClientCommand(char targetHashtag[], char ttweetString[])
+{
+  char userInput[200];
+  char clientCommand[20];
+  int charIndex = 0;
+  int endOfCmd = 0;
+
+  char unknownCmdMsg = "Command not recognized. Here are the available commands:\n\
+                        1. tweet​ \"<150 char max tweet>\" <Hashtag>\n\
+                        2. subscribe​ <Hashtag>\n\
+                        3. unsubscribe​ <Hashtag>\n\
+                        4. timeline\n\
+                        5. exit\n";
+
+  scanf("%s", userInput);
+
+  while (userInput[charIndex] != ' ')
+  {
+    if (userInput[charIndex] == '\0')
+    {
+      endOfCmd = 1;
+      break;
+    }
+    if (charIndex > 19)
+    { /* None of the valid commands exceed 19 chars */
+      return PersistWithError(unknownCmdMsg);
+    }
+    clientCommand[charIndex] = userInput[charIndex];
+    charIndex++;
+  }
+
+  clientCommand[charIndex] = '\0';
+  charIndex++;
+
+  if (strcmp(clientCommand, "tweet") == 0)
+  {
+    return validateTweetCmd(userInput, charIndex, targetHashtag, ttweetString);
+  }
+  else if (strcmp(clientCommand, "subscribe") == 0)
+  {
+    return validateSubscribeCmd(userInput, charIndex, targetHashtag);
+  }
+  else if (strcmp(clientCommand, "unsubscribe") == 0)
+  {
+    return validateUnsubscribeCmd(userInput, charIndex, targetHashtag);
+  }
+  else if (strcmp(clientCommand, "timeline") == 0)
+  {
+    return validateTimelineCmd(endOfCmd);
+  }
+  else if (strcmp(clientCommand, "exit") == 0)
+  {
+    return validateExitCmd(endOfCmd);
+  }
+  else
+  {
+    return PersistWithError(unknownCmdMsg);
+  }
+}
+
+int validateTweetCmd(char userInput[], int charIndex, char targetHashtag[], char ttweetString[])
+{
+  int ttweetStringIndex = 0;
+  int targetHashtagIndex = 0;
+  char invalidTweetCmdMsg = "tweet command not formatted correctly. Please try again.";
+
+  if (userInput[charIndex] != '\"')
+  {
+    return PersistWithError(invalidTweetCmdMsg);
+  }
+  charIndex++;
+  while (userInput[charIndex] != '\"')
+  {
+    if (ttweetStringIndex > 149)
+    {
+      return PersistWithError("tweet message cannot exceed 150 chars. Please try again.");
+    }
+    ttweetString[ttweetStringIndex] = userInput[charIndex];
+    charIndex++;
+    ttweetStringIndex++;
+  }
+  charIndex++;
+  if (userInput[charIndex] != ' ')
+  {
+    return PersistWithError(invalidTweetCmdMsg);
+  }
+  charIndex++;
+  while (userInput[charIndex] != '\0')
+  {
+    if (userInput[charIndex] == ' ')
+    {
+      return PersistWithError("Invalid hashtag(s)! Hashtag cannot contain whitespaces.");
+    }
+    if (targetHashtagIndex > 25)
+    {
+      return PersistWithError("Invalid hashtag(s)! Hashtag cannot exceed 25 chars.");
+    }
+    targetHashtag[targetHashtagIndex] = userInput[charIndex];
+    charIndex++;
+    targetHashtagIndex++;
+  }
+
+  return 1;
+}
+
+int validateSubscribeCmd(char userInput[], int charIndex, char targetHashtag[])
+{
+  int targetHashtagIndex = 0;
+  char invalidSubscribeCmdMsg = "subscribe command not formatted correctly. Please try again.";
+
+  while (userInput[charIndex] != '\0')
+  {
+    if (userInput[charIndex] != ' ')
+    {
+      return PersistWithError(invalidSubscribeCmdMsg);
+    }
+    if (targetHashtagIndex > 25)
+    {
+      return PersistWithError("Invalid hashtag(s)! Hashtag cannot exceed 25 chars.");
+    }
+    targetHashtag[targetHashtagIndex] = userInput[charIndex];
+    charIndex++;
+    targetHashtagIndex++;
+  }
+  return 2;
+}
+
+int validateUnsubscribeCmd(char userInput[], int charIndex, char targetHashtag[])
+{
+  int targetHashtagIndex = 0;
+  char invalidUnsubscribeCmdMsg = "unsubscribe command not formatted correctly. Please try again.";
+
+  while (userInput[charIndex] != '\0')
+  {
+    if (userInput[charIndex] != ' ')
+    {
+      return PersistWithError(invalidUnsubscribeCmdMsg);
+    }
+    if (targetHashtagIndex > 25)
+    {
+      return PersistWithError("Invalid hashtag(s)! Hashtag cannot exceed 25 chars.");
+    }
+    targetHashtag[targetHashtagIndex] = userInput[charIndex];
+    charIndex++;
+    targetHashtagIndex++;
+  }
+  return 3;
+}
+
+int validateTimelineCmd(int endOfCmd)
+{
+  char invalidTimelineCmdMsg = "timeline command not formatted correctly. Please try again.";
+
+  if (!endOfCmd)
+  {
+    return PersistWithError(invalidTimelineCmdMsg);
+  }
+  return 4;
+}
+
+int validateExitCmd(int endOfCmd)
+{
+  char invalidExitCmdMsg = "exit command not formatted correctly. Please try again.";
+
+  if (!endOfCmd)
+  {
+    return PersistWithError(invalidExitCmdMsg);
+  }
+  return 5;
+}
+
+// while ((bytesRcvd = recv(sock, ttweetBuffer, RCVBUFSIZE - 1, 0)) > 0)
+// {
+//   /* Receive up to the buffer size (minus 1 to leave space for
+//      a null terminator) bytes from the sender */
+//   ttweetBuffer[bytesRcvd] = '\0'; /* Terminate the string! */
+//   printf("%s", ttweetBuffer);     /* Print the ttweetBuffer */
+// }

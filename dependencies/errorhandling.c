@@ -20,7 +20,8 @@ void DieWithError(char *errorMessage)
 }
 
 /** \copydoc PersistWithError */
-void PersistWithError(char *errorMessage)
+int PersistWithError(char *errorMessage)
 {
     perror(errorMessage);
+    return -1;
 }

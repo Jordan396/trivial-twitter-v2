@@ -29,6 +29,13 @@
 #define MAXPENDING 5    /* Maximum outstanding connection requests */
 #define RCVBUFSIZE 32   /* Size of receive buffer */
 
+#define CMD_VALIDATE_USER 0
+#define CMD_TWEET 1
+#define CMD_SUBSCRIBE 2
+#define CMD_UNSUBSCRIBE 3
+#define CMD_TIMELINE 4
+#define CMD_EXIT 5
+
 /**
  * @brief Error handling function
  *

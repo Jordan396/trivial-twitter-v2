@@ -38,10 +38,10 @@
 #include "errorhandling.h"
 #include "cJSON.h"
 
-void parseHashtags(char *validHashtags[], int *numValidHashtags, char *inputHashtags);                                             /* Parses hashtags from user input */
+int parseHashtags(char *validHashtags[], int *numValidHashtags, char *inputHashtags);                                              /* Parses hashtags from user input */
 void saveCurrentHashtag(char *currentHashtagBuffer, int *currentHashtagBufferIndex, char *validHashtags[], int *numValidHashtags); /* Save current hashtag buffer */
-void ttweetToJson(cJSON *jobj, char ttweetString[], char *validHashtags[], int numValidHashtags);                                  /* Converts user input to a ttweet JSON object */
-void resetClientVariables(char *validHashtags[], int *numValidHashtags, cJSON *jobj);                                              /* Resets client variables to prepare for the next command */
+void ttweetToJson(cJSON *jobjPayload, char ttweetString[], char *validHashtags[], int numValidHashtags);                           /* Converts user input to a ttweet JSON object */
+void resetClientVariables(char *validHashtags[], int *numValidHashtags, cJSON *jobjPayload);                                       /* Resets client variables to prepare for the next command */
 void deallocateStringArray(char *stringArray[], int numStringsInArray);                                                            /* Deallocates memory from a dynamic string array */
 int duplicateStringExists(char *stringArray[], int numStringsInArray);                                                             /* Checks for duplicates in string array */
 
@@ -55,7 +55,8 @@ int main(int argc, char *argv[])
 
   /* Variables to process user commands */
   int clientCommandCode;
-  cJSON *jobj;                          /* JSON object to store ttweet */
+  cJSON *jobjPayload;                   /* JSON payload to be sent */
+  cJSON *jobjResponse;                  /* JSON response received */
   char ttweetString[MAX_TWEET_LEN];     /* String to be send to ttweet server */
   unsigned int ttweetStringLen;         /* Length of string to ttweet */
   char *validHashtags[MAX_HASHTAG_CNT]; /* Array of valid hashtags */
@@ -63,10 +64,10 @@ int main(int argc, char *argv[])
   char targetHashtag[MAX_HASHTAG_LEN];
   char *inputHashtags; /* User input for hashtags */
   char username;
-  int usernameLen;
 
   /* Variables used to handle transfer of data over TCP */
   char ttweetBuffer[RCVBUFSIZE]; /* Buffer for ttweet string */
+  char ttweetserReply[MAX_REPLY_LEN];
 
   if (argc != 3) /* Test for correct number of arguments */
   {
@@ -76,7 +77,6 @@ int main(int argc, char *argv[])
   servIP = argv[1];               /* Server IP address (dotted quad) */
   ttweetServPort = atoi(argv[2]); /* Use given port, if any */
   username = argv[3];             /* Parse username */
-  usernameLen = strlen(username); /* Assign username length */
 
   /* Create a reliable, stream socket using TCP */
   if ((sock = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)
@@ -92,31 +92,54 @@ int main(int argc, char *argv[])
   if (connect(sock, (struct sockaddr *)&ttweetServAddr, sizeof(ttweetServAddr)) < 0)
     DieWithError("connect() failed");
 
-  /* Username length is sent to inform server when send() completes */
-  short sz = htons(usernameLen); /* deals with possible endianness problems */
-  if (send(sock, &sz, sizeof(short), 0) != sizeof(short))
-    DieWithError("Block size: send() sent a different number of bytes than expected");
-  /* Send username to server for validation */
-  if (send(sock, username, usernameLen, 0) != usernameLen)
-    DieWithError("Block contents: send() sent a different number of bytes than expected");
+  /* Upload username to server for validation */
+  jobjPayload = cJSON_CreateObject();
+  cJSON *jcommand = cJSON_CreateNumber(CMD_VALIDATE_USER);   /*Creating a json int */
+  cJSON *jusername = cJSON_CreateString(username);           /*Creating a json string*/
+  cJSON_AddItemToObject(jobjPayload, "command", jcommand);   /*Add command to JSON object*/
+  cJSON_AddItemToObject(jobjPayload, "username", jusername); /*Add username to JSON object*/
+  uploadJsonObject(sock, jobjPayload);
+  cJSON_Delete(jobjPayload);
+
   /* Process validation code from server */
   validateUsername(sock);
 
   while (1)
   { /* Loop continuously */
+    resetClientVariables(validHashtags, numValidHashtags, jobjPayload);
     clientCommandCode = parseClientCommand(targetHashtag, ttweetString);
 
     switch (clientCommandCode)
     {
-    case -1:
+    case 0:
       break;
     case 1:
       /* tweet */
-      parseHashtags(validHashtags, &numValidHashtags, targetHashtag);
+      if (!parseHashtags(validHashtags, &numValidHashtags, targetHashtag))
+      { /* Error parsing hashtags */
+        break;
+      }
+      ttweetStringLen = strlen(ttweetString); /* Determine message length */
+      jobjPayload = cJSON_CreateObject();
+      ttweetToJson(jobjPayload, ttweetString, validHashtags, numValidHashtags);
+      if (!uploadJsonObject(sock, jobjPayload))
+      { /* Error uploading json object */
+        break;
+      }
+      printf("Tweet uploaded successfully.\n");
       break;
     case 2:
       /* subscribe */
-      break;
+      if (!parseHashtags(validHashtags, &numValidHashtags, targetHashtag))
+      { /* Error parsing hashtags */
+        break;
+      }
+      if (numValidHashtags != 1)
+      {
+        PersistWithError("Subscribe only accepts one hashtag as its argument.");
+        break;
+      }
+
     case 3:
       /* unsubscribe */
       break;
@@ -131,14 +154,6 @@ int main(int argc, char *argv[])
       DieWithError("Unexpected error occured.");
     }
   }
-  
-  ttweetStringLen = strlen(ttweetString); /* Determine message length */
-
-  inputHashtags = "#1#2#pop#mom";
-  jobj = cJSON_CreateObject();
-  
-  ttweetToJson(jobj, "ttweet message!", validHashtags, numValidHashtags);
-  resetClientVariables(validHashtags, numValidHashtags, jobj);
 }
 
 /** \copydoc parseHashTags */
@@ -208,6 +223,7 @@ int parseHashtags(char *validHashtags[], int *numValidHashtags, char *inputHasht
   { /* validHashtags contain duplicate hashtags */
     return PersistWithError("Invalid hashtag(s)! Duplicate hashtags detected.");
   }
+  return 1;
 }
 
 /** \copydoc saveCurrentHashtag */
@@ -241,7 +257,7 @@ int duplicateStringExists(char *stringArray[], int numStringsInArray)
 }
 
 /** \copydoc ttweetToJson */
-void ttweetToJson(cJSON *jobj, char *ttweetString, char *validHashtags[], int numValidHashtags)
+void ttweetToJson(cJSON *jobjPayload, char *ttweetString, char *validHashtags[], int numValidHashtags)
 {
   cJSON *jstring = cJSON_CreateString(ttweetString); /*Creating a json string*/
   cJSON *jarray = cJSON_CreateArray();               /*Creating a json array*/
@@ -249,17 +265,20 @@ void ttweetToJson(cJSON *jobj, char *ttweetString, char *validHashtags[], int nu
   { /*Add hashtags to array*/
     cJSON_AddItemToArray(jarray, cJSON_CreateString(validHashtags[i]));
   }
-  cJSON_AddItemToObject(jobj, "ttweetString", jstring);  /*Add ttweetString to JSON object*/
-  cJSON_AddItemToObject(jobj, "ttweetHashtags", jarray); /*Add hashtags to JSON object*/
-  printf("The json object created: %s\n", cJSON_Print(jobj));
+  cJSON_AddItemToObject(jobjPayload, "ttweetString", jstring);  /*Add ttweetString to JSON object*/
+  cJSON_AddItemToObject(jobjPayload, "ttweetHashtags", jarray); /*Add hashtags to JSON object*/
+  printf("The json object created: %s\n", cJSON_Print(jobjPayload));
 }
 
 /** \copydoc resetClientVariables */
-void resetClientVariables(char *validHashtags[], int *numValidHashtags, cJSON *jobj)
+void resetClientVariables(char *validHashtags[], int *numValidHashtags, cJSON *jobjPayload)
 {
   deallocateStringArray(validHashtags, *numValidHashtags);
   *numValidHashtags = 0;
-  cJSON_Delete(jobj);
+  if (!jobjPayload)
+  {
+    cJSON_Delete(jobjPayload);
+  }
 }
 
 /** \copydoc deallocateStringArray */
@@ -275,20 +294,20 @@ void deallocateStringArray(char *stringArray[], int numStringsInArray)
   }
 }
 
-void validateUsername(int sock)
-{
-  int usernameValidationCode;
-  recv(sock, &usernameValidationCode, sizeof(int), 0);
-  if (usernameValidationCode == 1)
-  { /* Username is valid */
-    printf("%s", "Username valid. Connection established successfully.\n");
-    return;
-  }
-  else
-  { /* Username is invalid */
-    DieWithError("Username invalid. Please select a different username and try again.");
-  }
-}
+// void validateUsername(int sock)
+// {
+//   int usernameValidationCode;
+//   recv(sock, &usernameValidationCode, sizeof(int), 0);
+//   if (usernameValidationCode == 1)
+//   { /* Username is valid */
+//     printf("%s", "Username valid. Connection established successfully.\n");
+//     return;
+//   }
+//   else
+//   { /* Username is invalid */
+//     DieWithError("Username invalid. Please select a different username and try again.");
+//   }
+// }
 
 int parseClientCommand(char targetHashtag[], char ttweetString[])
 {
@@ -461,10 +480,43 @@ int validateExitCmd(int endOfCmd)
   return 5;
 }
 
-// while ((bytesRcvd = recv(sock, ttweetBuffer, RCVBUFSIZE - 1, 0)) > 0)
-// {
-//   /* Receive up to the buffer size (minus 1 to leave space for
-//      a null terminator) bytes from the sender */
-//   ttweetBuffer[bytesRcvd] = '\0'; /* Terminate the string! */
-//   printf("%s", ttweetBuffer);     /* Print the ttweetBuffer */
-// }
+int uploadJsonObject(int sock, cJSON *jobjPayload)
+{
+  int jobjPayloadSize = sizeof(jobjPayload);
+  if (send(sock, &jobjPayloadSize, sizeof(int), 0) != sizeof(int))
+    return PersistWithError("Block size: send() sent a different number of bytes than expected");
+  if (send(sock, jobjPayload, jobjPayloadSize, 0) != jobjPayloadSize)
+    return PersistWithError("Block contents: send() sent a different number of bytes than expected");
+}
+
+int uploadString(int sock, char stringToUpload)
+{
+  int stringSize = sizeof(stringToUpload);
+  if (send(sock, &stringSize, sizeof(int), 0) != sizeof(int))
+    return PersistWithError("Block size: send() sent a different number of bytes than expected");
+  if (send(sock, stringToUpload, stringSize, 0) != stringSize)
+    return PersistWithError("Block contents: send() sent a different number of bytes than expected");
+}
+
+void receiveResponse(int sock, char *ttweetBuffer, char *ttweetserReply)
+{
+  int bytesToRecv;
+  int ttweetserReplyIndex = 0;
+  recv(sock, &bytesToRecv, sizeof(int), 0);
+  while (bytesToRecv > 0)
+  {
+    recv(sock, ttweetBuffer, RCVBUFSIZE, 0);
+    if (bytesToRecv > 32)
+    {
+      strncpy(ttweetserReply + ttweetserReplyIndex, ttweetBuffer, 32);
+      ttweetserReplyIndex += 32;
+    }
+    else
+    {
+      strncpy(ttweetserReply + ttweetserReplyIndex, ttweetBuffer, bytesToRecv);
+      ttweetserReplyIndex += bytesToRecv;
+      ttweetserReply[ttweetserReplyIndex] = '\0';
+    }
+    bytesToRecv -= 32;
+  }
+}

@@ -5,8 +5,18 @@
  *   repository. If not, see <https://opensource.org/licenses/MIT>.         *
  ****************************************************************************/
 
+#define MAXPENDING 5  /* Maximum outstanding connection requests */
+#define RCVBUFSIZE 32 /* Size of receive buffer */
+
+#define CMD_VALIDATE_USER 0
+#define CMD_TWEET 1
+#define CMD_SUBSCRIBE 2
+#define CMD_UNSUBSCRIBE 3
+#define CMD_TIMELINE 4
+#define CMD_EXIT 5
+
 /**
-  * @file errorhandling.h
+  * @file shared_functions.h
   * @author Jordan396
   * @date 29 March 2019
   * @brief Documentation for error handling functions.
@@ -33,3 +43,5 @@ void DieWithError(char *errorMessage);
  * @return -1
  */
 int PersistWithError(char *errorMessage);
+
+void receiveResponse(int sock, char *ttweetBuffer, char *ttweetserReply);

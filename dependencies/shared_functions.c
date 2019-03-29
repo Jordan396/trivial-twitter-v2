@@ -6,11 +6,13 @@
  ****************************************************************************/
 
 /**
-  * @file errorhandling.c
+  * @file shared_functions.c
   * @author Jordan396
   * @date 29 March 2019
-  * @brief This file contains error handling functions for trivial twitter v2.
+  * @brief This file contains functions used in BOTH client and server side for trivial-twitter-v2.
   */
+
+#include "shared_functions.h"
 
 /** \copydoc DieWithError */
 void DieWithError(char *errorMessage)
@@ -23,5 +25,28 @@ void DieWithError(char *errorMessage)
 int PersistWithError(char *errorMessage)
 {
     perror(errorMessage);
-    return -1;
+    return 0;
+}
+
+void receiveResponse(int sock, char *buffer, char *message)
+{
+  int bytesToRecv;
+  int messageIdx = 0;
+  recv(sock, &bytesToRecv, sizeof(int), 0);
+  while (bytesToRecv > 0)
+  {
+    recv(sock, buffer, RCVBUFSIZE, 0);
+    if (bytesToRecv > 32)
+    {
+      strncpy(message + messageIdx, buffer, 32);
+      messageIdx += 32;
+    }
+    else
+    {
+      strncpy(message + messageIdx, buffer, bytesToRecv);
+      messageIdx += bytesToRecv;
+      message[messageIdx] = '\0';
+    }
+    bytesToRecv -= 32;
+  }
 }

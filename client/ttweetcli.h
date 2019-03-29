@@ -37,6 +37,7 @@
 #define MAX_HASHTAG_CNT 15 /* Limit for hashtag count */
 #define MAX_TWEET_LEN 151
 #define MAX_HASHTAG_LEN 25
+#define MAX_REPLY_LEN 1000
 
 /**
  * @brief Handles connection errors
@@ -73,7 +74,7 @@ void RejectWithError(char *errorMessage, char *validHashtags[], int *numValidHas
  * @param inputHashtags Hashatag input from the user.
  * @return void
  */
-void parseHashtags(char *validHashtags[], int *numValidHashtags, char *inputHashtags);
+int parseHashtags(char *validHashtags[], int *numValidHashtags, char *inputHashtags);
 
 /**
  * @brief Save current hashtag buffer

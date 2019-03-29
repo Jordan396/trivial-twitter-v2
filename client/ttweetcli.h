@@ -45,7 +45,7 @@
  * @param errorMessage Error message to be printed.
  * @return void
  */
-void DieWithError(char *errorMessage);
+void throwConnectionError(char *errorMessage);
 
 /**
  * @brief Handles input errors during connection

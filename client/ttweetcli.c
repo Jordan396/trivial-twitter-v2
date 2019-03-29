@@ -35,10 +35,9 @@
   */
 
 #include "ttweetcli.h"
+#include "errorhandling.h"
 #include "cJSON.h"
 
-void DieWithError(char *errorMessage);                                                                                             /* Handles connection errors */
-void PersistWithError(char *errorMessage);                                                                                         /* Handles input errors during connection */
 void parseHashtags(char *validHashtags[], int *numValidHashtags, char *inputHashtags);                                             /* Parses hashtags from user input */
 void saveCurrentHashtag(char *currentHashtagBuffer, int *currentHashtagBufferIndex, char *validHashtags[], int *numValidHashtags); /* Save current hashtag buffer */
 void ttweetToJson(cJSON *jobj, char *ttweetString, char *validHashtags[], int numValidHashtags);                                   /* Converts user input to a ttweet JSON object */
@@ -49,29 +48,28 @@ int duplicateStringExists(char *stringArray[], int numStringsInArray);          
 int main(int argc, char *argv[])
 {
 
-  char usernameValidation[32] = "vQa&yXWS5V!6P+dF-%$ArTz4$dwbebC\0"; /* Passphrase to validate username */
-
-  int sock;                             /* Socket descriptor */
-  struct sockaddr_in ttweetServAddr;    /* ttweet server address */
-  unsigned short ttweetServPort;        /* ttweet server port */
-  char *servIP;                         /* Server IP address (dotted quad) */
-  char *ttweetString;                   /* String to be send to ttweet server */
-  char ttweetBuffer[RCVBUFSIZE];        /* Buffer for ttweet string */
-  unsigned int ttweetStringLen;         /* Length of string to ttweet */
-  char *validHashtags[MAX_HASHTAG_CNT]; /* Array of valid hashtags */
-  int numValidHashtags;                 /* Number of valid hashtags */
-  cJSON *jobj;                          /* JSON object to store ttweet */
-  char *inputHashtags;                  /* User input for hashtags */
-  int bytesRcvd;                        /* Bytes read in single recv() */
-  char invalidCommandMsg;
+  char validUsernameKey[32] = "vQa&yXWS5V!6P+dF-%$ArTz4$dwbebC\0"; /* Passphrase to validate username */
+  int sock;                                                        /* Socket descriptor */
+  struct sockaddr_in ttweetServAddr;                               /* ttweet server address */
+  unsigned short ttweetServPort;                                   /* ttweet server port */
+  char *servIP;                                                    /* Server IP address (dotted quad) */
+  char *ttweetString;                                              /* String to be send to ttweet server */
+  char ttweetBuffer[RCVBUFSIZE];                                   /* Buffer for ttweet string */
+  unsigned int ttweetStringLen;                                    /* Length of string to ttweet */
+  char *validHashtags[MAX_HASHTAG_CNT];                            /* Array of valid hashtags */
+  int numValidHashtags;                                            /* Number of valid hashtags */
+  cJSON *jobj;                                                     /* JSON object to store ttweet */
+  char *inputHashtags;                                             /* User input for hashtags */
+  int bytesRcvd;                                                   /* Bytes read in single recv() */
+  char invalidCmdMsg;
   char username;
   int usernameLen;
 
-  invalidCommandMsg = "Command not recognized!\nUsage: $./ttweetcl <ServerIP> <ServerPort> <Username>";
+  invalidCmdMsg = "Command not recognized!\nUsage: $./ttweetcl <ServerIP> <ServerPort> <Username>";
 
   if (argc != 3) /* Test for correct number of arguments */
   {
-    DieWithError(invalidCommandMsg);
+    DieWithError(invalidCmdMsg);
   }
 
   servIP = argv[1];               /* Server IP address (dotted quad) */
@@ -126,19 +124,6 @@ int main(int argc, char *argv[])
   parseHashtags(validHashtags, &numValidHashtags, inputHashtags);
   ttweetToJson(jobj, "ttweet message!", validHashtags, numValidHashtags);
   resetClientVariables(validHashtags, numValidHashtags, jobj);
-}
-
-/** \copydoc DieWithError */
-void DieWithError(char *errorMessage)
-{
-  perror(errorMessage);
-  exit(1);
-}
-
-/** \copydoc PersistWithError */
-void PersistWithError(char *errorMessage)
-{
-  perror(errorMessage);
 }
 
 /** \copydoc parseHashTags */

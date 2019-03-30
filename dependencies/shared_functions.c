@@ -13,40 +13,56 @@
   */
 
 #include "shared_functions.h"
+#include "cJSON.h"
 
-/** \copydoc DieWithError */
-void DieWithError(char *errorMessage)
+/** \copydoc die_with_error */
+void die_with_error(char *errorMessage)
 {
-    perror(errorMessage);
-    exit(1);
+  perror(errorMessage);
+  exit(1);
 }
 
-/** \copydoc PersistWithError */
-int PersistWithError(char *errorMessage)
+/** \copydoc persist_with_error */
+int persist_with_error(char *errorMessage)
 {
-    perror(errorMessage);
-    return 0;
+  perror(errorMessage);
+  return 0;
 }
 
-void receiveResponse(int sock, char *buffer, char *message)
+int send_payload(int sock, cJSON *jobjPayload)
+{
+  int jobjPayloadSize = sizeof(jobjPayload);
+  if (send(sock, &jobjPayloadSize, sizeof(int), 0) != sizeof(int))
+    return persist_with_error("Block size: send() sent a different number of bytes than expected");
+  if (send(sock, jobjPayload, jobjPayloadSize, 0) != jobjPayloadSize)
+    return persist_with_error("Block contents: send() sent a different number of bytes than expected");
+}
+
+void receive_response(int sock, cJSON *jobjResponse)
 {
   int bytesToRecv;
-  int messageIdx = 0;
+  int responseIdx = 0;
+  char buffer[RCV_BUF_SIZE];   /* Buffer for ttweet string */
+  char response[MAX_RESP_LEN]; /* Stores the entire response */
+
   recv(sock, &bytesToRecv, sizeof(int), 0);
   while (bytesToRecv > 0)
   {
-    recv(sock, buffer, RCVBUFSIZE, 0);
-    if (bytesToRecv > 32)
+    recv(sock, buffer, RCV_BUF_SIZE, 0);
+    if (bytesToRecv > RCV_BUF_SIZE)
     {
-      strncpy(message + messageIdx, buffer, 32);
-      messageIdx += 32;
+      strncpy(response + responseIdx, buffer, 32);
+      responseIdx += RCV_BUF_SIZE;
     }
     else
     {
-      strncpy(message + messageIdx, buffer, bytesToRecv);
-      messageIdx += bytesToRecv;
-      message[messageIdx] = '\0';
+      strncpy(response + responseIdx, buffer, bytesToRecv);
+      responseIdx += bytesToRecv;
+      response[responseIdx] = '\0';
     }
-    bytesToRecv -= 32;
+    bytesToRecv -= RCV_BUF_SIZE;
   }
+
+  jobjResponse = cJSON_Parse(response);
+  printf("JSON response: %s\n", cJSON_Print(jobjResponse));
 }

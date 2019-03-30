@@ -5,15 +5,25 @@
  *   repository. If not, see <https://opensource.org/licenses/MIT>.         *
  ****************************************************************************/
 
-#define MAXPENDING 5  /* Maximum outstanding connection requests */
-#define RCVBUFSIZE 32 /* Size of receive buffer */
+#define MAXPENDING 5      /* Maximum outstanding connection requests */
+#define RCV_BUF_SIZE 32   /* Size of receive buffer */
+#define MAX_RESP_LEN 5000 /* Maximum number of characters in response */
 
-#define CMD_VALIDATE_USER 0
-#define CMD_TWEET 1
-#define CMD_SUBSCRIBE 2
-#define CMD_UNSUBSCRIBE 3
-#define CMD_TIMELINE 4
-#define CMD_EXIT 5
+#define REQ_INVALID 0
+#define REQ_TWEET 1
+#define REQ_SUBSCRIBE 2
+#define REQ_UNSUBSCRIBE 3
+#define REQ_TIMELINE 4
+#define REQ_EXIT 5
+#define REQ_VALIDATE_USER 6
+
+#define RES_INVALID 10
+#define RES_TWEET 11
+#define RES_SUBSCRIBE 12
+#define RES_UNSUBSCRIBE 13
+#define RES_TIMELINE 14
+#define RES_EXIT 15
+#define RES_VALIDATE_USER 16
 
 /**
   * @file shared_functions.h
@@ -32,7 +42,7 @@
  * @param errorMessage Error message to be printed.
  * @return void
  */
-void DieWithError(char *errorMessage);
+void die_with_error(char *errorMessage);
 
 /**
  * @brief Error handling function for minor errors
@@ -42,6 +52,7 @@ void DieWithError(char *errorMessage);
  * @param errorMessage Error message to be printed.
  * @return -1
  */
-int PersistWithError(char *errorMessage);
+int persist_with_error(char *errorMessage);
 
-void receiveResponse(int sock, char *ttweetBuffer, char *ttweetserReply);
+int send_payload(int sock, cJSON *jobjPayload);
+void receive_response(int sock, cJSON *jobjResponse);

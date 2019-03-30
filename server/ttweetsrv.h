@@ -10,7 +10,7 @@
  *   repository. If not, see <https://opensource.org/licenses/MIT>.         *
  ****************************************************************************/
 
- /**
+/**
   * @file ttweetser.h
   * @author Jordan396
   * @date 14 February 2019
@@ -25,16 +25,8 @@
 #include <stdlib.h>     /* for atoi() and exit() */
 #include <string.h>     /* for memset() */
 #include <unistd.h>     /* for close() */
-
-#define MAXPENDING 5    /* Maximum outstanding connection requests */
-#define RCVBUFSIZE 32   /* Size of receive buffer */
-
-#define CMD_VALIDATE_USER 0
-#define CMD_TWEET 1
-#define CMD_SUBSCRIBE 2
-#define CMD_UNSUBSCRIBE 3
-#define CMD_TIMELINE 4
-#define CMD_EXIT 5
+#include <sys/wait.h>   /* for waitpid() */
+#include <signal.h>     /* for sigaction() */
 
 /**
  * @brief Error handling function
@@ -44,7 +36,7 @@
  * @param errorMessage Error message to be printed.
  * @return void
  */
-void DieWithError(char *errorMessage);
+void die_with_error(char *errorMessage);
 
 /**
  * @brief TCP client handling function
@@ -61,4 +53,4 @@ void DieWithError(char *errorMessage);
  *
  * @return void
  */
-void HandleTCPClient(int clntSocket, char *ttweetMessage, char *uploadRequestStr, char *downloadRequestStr);
+void handle_ttweet_client(int clntSocket, char *ttweetMessage, char *uploadRequestStr, char *downloadRequestStr);

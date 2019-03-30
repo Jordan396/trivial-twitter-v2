@@ -74,7 +74,7 @@ void RejectWithError(char *errorMessage, char *validHashtags[], int *numValidHas
  * @param inputHashtags Hashatag input from the user.
  * @return void
  */
-int parseHashtags(char *validHashtags[], int *numValidHashtags, char *inputHashtags);
+int parse_hashtags(char *validHashtags[], int *numValidHashtags, char *inputHashtags);
 
 /**
  * @brief Save current hashtag buffer
@@ -88,7 +88,7 @@ int parseHashtags(char *validHashtags[], int *numValidHashtags, char *inputHasht
  * @param numValidHashtags Number of hashtags in validHashtags
  * @return void
  */
-void saveCurrentHashtag(char *currentHashtagBuffer, int *currentHashtagBufferIndex, char *validHashtags[], int *numValidHashtags);
+void save_current_hashtag(char *currentHashtagBuffer, int *currentHashtagBufferIndex, char *validHashtags[], int *numValidHashtags);
 
 /**
  * @brief Checks for duplicates in string array
@@ -112,7 +112,7 @@ int checkDuplicatesExists(char *stringArray[], int numStringsInArray);
  * @param numValidHashtags Number of hashtags in validHashtags
  * @return void
  */
-void ttweetToJson(cJSON *jobj, char *ttweetString, char *validHashtags[], int numValidHashtags);
+void ttweet_to_json(cJSON *jobj, char *ttweetString, char *validHashtags[], int numValidHashtags);
 
 /**
  * @brief Deallocates memory from a dynamic string array
@@ -123,7 +123,7 @@ void ttweetToJson(cJSON *jobj, char *ttweetString, char *validHashtags[], int nu
  * @param numStringsInArray Number of elements to free in the array
  * @return void
  */
-void deallocateStringArray(char *stringArray[], int numStringsInArray);
+void deallocate_string_array(char *stringArray[], int numStringsInArray);
 
 /**
  * @brief Resets client variables to prepare for the next command
@@ -136,4 +136,4 @@ void deallocateStringArray(char *stringArray[], int numStringsInArray);
  * @param jobj cJSON object to store ttweet
  * @return void
  */
-void resetClientVariables(char *validHashtags[], int *numValidHashtags, cJSON *jobj);
+void reset_client_variables(int *clientCommandSuccess, char *validHashtags[], int *numValidHashtags, cJSON *jobjPayload);

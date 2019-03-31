@@ -32,8 +32,9 @@ void child_exit_signal_handler();          /* Function to clean up zombie child 
 void die_with_error(char *errorMessage);   /* Error handling function */
 void handle_ttweet_client(int clntSocket); /* TCP client handling function */
 
-/* Global so accessable by SIGCHLD signal handler */
-unsigned int childProcCount = 0; /* Number of child processes */
+/* Global variables */
+unsigned int childProcCount = 0;                   /* Number of child processes */
+char activeUsers[MAX_CONC_CONN][MAX_USERNAME_LEN]; /* Keeps track of active users */
 
 int main(int argc, char *argv[])
 {
@@ -45,12 +46,10 @@ int main(int argc, char *argv[])
 
   if (argc != 2) /* Test for correct number of arguments */
   {
-    fprintf(stderr, "Usage: ./ttweetsrv <Port>\n", argv[0]);
-    exit(1);
+    die_with_error("Usage: ./ttweetsrv <Port>\n");
   }
 
   ttweetServPort = atoi(argv[1]); /* First arg:  local port */
-
   servSock = create_tcp_serv_socket(ttweetServPort);
 
   /* Set child_exit_signal_handler() as handler function */
@@ -64,22 +63,34 @@ int main(int argc, char *argv[])
   if (sigaction(SIGCHLD, &signalHandler, 0) < 0)
     die_with_error("sigaction() failed");
 
-  for (;;) /* run forever */
+  /* Spawn a dedicated child process to check for latest tweets */
+  if ((processID = fork()) < 0)
+    die_with_error("fork() failed");
+  else if (processID == 0) /* If this is the child process */
   {
-    clntSock = accept_tcp_connection(servSock);
-    /* Fork child process and report any errors */
-    if ((processID = fork()) < 0)
-      die_with_error("fork() failed");
-    else if (processID == 0) /* If this is the child process */
-    {
-      close(servSock); /* Child closes parent socket file descriptor */
-      handle_ttweet_client(clntSock);
-      exit(0); /* Child process done */
-    }
+    handle_tweet_updates();
+    exit(0); /* Child process done */
+  }
 
-    printf("with child process: %d\n", (int)processID);
-    close(clntSock);  /* Parent closes child socket descriptor */
-    childProcCount++; /* Increment number of outstanding child processes */
+  while (1) /* run forever */
+  {
+    if (childProcCount < MAX_CONC_CONN)
+    { /* Server supports up to MAX_CONC_CONN connections */
+      clntSock = accept_tcp_connection(servSock);
+      /* Fork child process and report any errors */
+      if ((processID = fork()) < 0)
+        die_with_error("fork() failed");
+      else if (processID == 0) /* If this is the child process */
+      {
+        close(servSock); /* Child closes parent socket file descriptor */
+        handle_ttweet_client(clntSock);
+        exit(0); /* Child process done */
+      }
+
+      printf("with child process: %d\n", (int)processID);
+      close(clntSock);  /* Parent closes child socket descriptor */
+      childProcCount++; /* Increment number of outstanding child processes */
+    }
   }
 }
 
@@ -119,7 +130,7 @@ int create_tcp_serv_socket(unsigned short port)
     die_with_error("bind() failed");
 
   /* Mark the socket so it will listen for incoming connections */
-  if (listen(sock, MAXPENDING) < 0)
+  if (listen(sock, MAX_PENDING) < 0)
     die_with_error("listen() failed");
 
   return sock;
@@ -127,21 +138,75 @@ int create_tcp_serv_socket(unsigned short port)
 
 int accept_tcp_connection(int servSock)
 {
-  int clntSock;                    /* Socket descriptor for client */
-  struct sockaddr_in echoClntAddr; /* Client address */
-  unsigned int clntLen;            /* Length of client address data structure */
+  int clntSock;                      /* Socket descriptor for client */
+  struct sockaddr_in ttweetClntAddr; /* Client address */
+  unsigned int clntLen;              /* Length of client address data structure */
 
   /* Set the size of the in-out parameter */
-  clntLen = sizeof(echoClntAddr);
+  clntLen = sizeof(ttweetClntAddr);
 
   /* Wait for a client to connect */
-  if ((clntSock = accept(servSock, (struct sockaddr *)&echoClntAddr,
+  if ((clntSock = accept(servSock, (struct sockaddr *)&ttweetClntAddr,
                          &clntLen)) < 0)
     die_with_error("accept() failed");
 
   /* clntSock is connected to a client! */
 
-  printf("Handling client %s\n", inet_ntoa(echoClntAddr.sin_addr));
+  printf("Handling client %s\n", inet_ntoa(ttweetClntAddr.sin_addr));
 
   return clntSock;
+}
+
+void handle_tcp_client(int clntSocket)
+{
+  cJSON *jobjResponse;
+
+  receive_response(clntSocket, jobjResponse);
+
+  /* Send received string and receive again until end of transmission */
+  while (recvMsgSize > 0) /* zero indicates end of transmission */
+  {
+    /* Echo message back to client */
+    if (send(clntSocket, ttweetBuffer, recvMsgSize, 0) != recvMsgSize)
+      DieWithError("send() failed");
+
+    /* See if there is more data to receive */
+    if ((recvMsgSize = recv(clntSocket, ttweetBuffer, RCVBUFSIZE, 0)) < 0)
+      DieWithError("recv() failed");
+  }
+
+  close(clntSocket); /* Close client socket */
+}
+
+void handle_client_response(cJSON *jobjResponse)
+{
+  int requestCode = cJSON_GetObjectItemCaseSensitive(jobjResponse, "requestCode");
+  switch (requestCode)
+  {
+  case REQ_TWEET:
+    cJSON *jarray = cJSON_GetObjectItemCaseSensitive(jobjResponse, "storedTweets");
+    for (int i = 0; i < cJSON_GetArraySize(jarray); i++)
+    {
+      printf("%s\n", cJSON_GetArrayItem(jarray, i));
+    }
+    break;
+  case RES_VALIDATE_USER:
+    int isUserValid = cJSON_GetObjectItemCaseSensitive(jobjResponse, "isUserValid");
+    if (isUserValid)
+    {
+      printf("Username legal. Connection established.");
+    }
+    else
+    {
+      die_with_error("Username already taken. Please try again with a different username.");
+    }
+  default:
+    die_with_error("Error! Server sent an invalid response code.");
+    break;
+  }
+}
+
+void handle_tweet_updates()
+{
+  
 }

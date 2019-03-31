@@ -43,7 +43,7 @@
 #include "cJSON.h"
 
 int parse_hashtags(char *validHashtags[], int *numValidHashtags, char *inputHashtags);                                                                 /* Parses hashtags from user input */
-void save_current_hashtag(char *currentHashtagBuffer, int *currentHashtagBufferIndex, char *validHashtags[], int *numValidHashtags);                   /* Save current hashtag buffer */
+void save_current_hashtag(char *currentHashtagBuffer, int *currentHashtagBufferIdx, char *validHashtags[], int *numValidHashtags);                     /* Save current hashtag buffer */
 void create_json_client_payload(cJSON *jobjPayload, int commandCode, char *username, char *ttweetString, char *validHashtags[], int numValidHashtags); /* Create a JSON client payload */
 void reset_client_variables(int *clientCommandSuccess, char *validHashtags[], int *numValidHashtags, cJSON *jobjPayload);                              /* Resets client variables to prepare for the next command */
 void deallocate_string_array(char *stringArray[], int numStringsInArray);                                                                              /* Deallocates memory from a dynamic string array */
@@ -99,7 +99,7 @@ int main(int argc, char *argv[])
 
   /* Process validation code from server */
   receive_response(sock, jobjResponse);
-  process_server_response(jobjResponse);
+  handle_server_response(jobjResponse);
 
   while (1)
   { /* Loop continuously */
@@ -128,9 +128,7 @@ int main(int argc, char *argv[])
       break;
     case REQ_EXIT:
       /* exit */
-      printf("Exiting client...");
-      close(sock);
-      exit(0);
+      break;
     default:
       die_with_error("An error occured. Exiting client...");
       break;
@@ -150,20 +148,27 @@ int main(int argc, char *argv[])
     {
       printf("Operation failed.\n");
     }
+
+    if (clientCommandCode == REQ_EXIT)
+    {
+      printf("Exiting client...");
+      close(sock);
+      exit(0);
+    }
   }
 }
 
 /** \copydoc parse_hashtags */
 int parse_hashtags(char *validHashtags[], int *numValidHashtags, char *inputHashtags)
 {
-  int inputHashtagsCharIndex = 1; /* Track char index in inputHashtags string */
-  int numConsecutiveHashes = 1;   /* Check for duplicate # within hashtag */
-  int lenInputHashtags;           /* Length of inputHashtags string */
-  char currentHashtagBuffer[25];  /* Current hashtag being parsed */
-  int currentHashtagBufferIndex;  /* char index of current hashtag being parsed */
+  int inputHashtagsCharIdx = 1;  /* Track char index in inputHashtags string */
+  int numConsecutiveHashes = 1;  /* Check for duplicate # within hashtag */
+  int lenInputHashtags;          /* Length of inputHashtags string */
+  char currentHashtagBuffer[25]; /* Current hashtag being parsed */
+  int currentHashtagBufferIdx;   /* char index of current hashtag being parsed */
 
-  *numValidHashtags = 0;         /* Initialize number of valid hashtags */
-  currentHashtagBufferIndex = 0; /* Initialize buffer index */
+  *numValidHashtags = 0;       /* Initialize number of valid hashtags */
+  currentHashtagBufferIdx = 0; /* Initialize buffer index */
 
   lenInputHashtags = strlen(inputHashtags); /* Assign length of input hashtags */
 
@@ -182,9 +187,9 @@ int parse_hashtags(char *validHashtags[], int *numValidHashtags, char *inputHash
     return persist_with_error("Invalid hashtag(s)! Hashtag(s) must be between 2 to 25 chars long.");
   }
 
-  while (inputHashtags[inputHashtagsCharIndex] != '\0')
+  while (inputHashtags[inputHashtagsCharIdx] != '\0')
   { /* Not yet reached end of inputHashtags */
-    if (inputHashtags[inputHashtagsCharIndex] == '#')
+    if (inputHashtags[inputHashtagsCharIdx] == '#')
     {
       numConsecutiveHashes++;
       if (numConsecutiveHashes > 1)
@@ -193,24 +198,24 @@ int parse_hashtags(char *validHashtags[], int *numValidHashtags, char *inputHash
       }
       else
       { /* Reached end of current hashtag. Save and prepare to parse next hashtag. */
-        save_current_hashtag(currentHashtagBuffer, &currentHashtagBufferIndex, validHashtags, numValidHashtags);
+        save_current_hashtag(currentHashtagBuffer, &currentHashtagBufferIdx, validHashtags, numValidHashtags);
       }
     }
-    else if (isalnum(inputHashtags[inputHashtagsCharIndex]) != 0)
+    else if (isalnum(inputHashtags[inputHashtagsCharIdx]) != 0)
     { /* char is alphanumeric */
-      currentHashtagBuffer[currentHashtagBufferIndex] = inputHashtags[inputHashtagsCharIndex];
-      currentHashtagBufferIndex++;
+      currentHashtagBuffer[currentHashtagBufferIdx] = inputHashtags[inputHashtagsCharIdx];
+      currentHashtagBufferIdx++;
       numConsecutiveHashes = 0;
     }
     else
     { /* char is not alphanumeric or # */
       return persist_with_error("Invalid hashtag(s)! Hashtag(s) contains invalid characters.");
     }
-    inputHashtagsCharIndex++;
+    inputHashtagsCharIdx++;
   }
 
   /* Reached end of inputHashtags */
-  save_current_hashtag(currentHashtagBuffer, &currentHashtagBufferIndex, validHashtags, numValidHashtags);
+  save_current_hashtag(currentHashtagBuffer, &currentHashtagBufferIdx, validHashtags, numValidHashtags);
 
   if (numValidHashtags > 8)
   { /* Limit of 8 hashtags exceeded */
@@ -224,16 +229,16 @@ int parse_hashtags(char *validHashtags[], int *numValidHashtags, char *inputHash
 }
 
 /** \copydoc save_current_hashtag */
-void save_current_hashtag(char *currentHashtagBuffer, int *currentHashtagBufferIndex, char *validHashtags[], int *numValidHashtags)
+void save_current_hashtag(char *currentHashtagBuffer, int *currentHashtagBufferIdx, char *validHashtags[], int *numValidHashtags)
 {
-  currentHashtagBuffer[*currentHashtagBufferIndex] = '\0';
+  currentHashtagBuffer[*currentHashtagBufferIdx] = '\0';
   if (strcmp(currentHashtagBuffer, "ALL") == 0)
   { /* Hashtag #ALL is not allowed */
     return persist_with_error("Invalid hashtag(s)! Hashtag #ALL is not allowed.");
   }
-  validHashtags[*numValidHashtags] = (char *)malloc((*currentHashtagBufferIndex + 1) * sizeof(char));
+  validHashtags[*numValidHashtags] = (char *)malloc((*currentHashtagBufferIdx + 1) * sizeof(char));
   strcpy(validHashtags[*numValidHashtags], currentHashtagBuffer);
-  *currentHashtagBufferIndex = 0;
+  *currentHashtagBufferIdx = 0;
   (*numValidHashtags)++;
 }
 
@@ -282,7 +287,7 @@ int parse_client_command(char inputHashtags[], char ttweetString[])
 {
   char clientInput[200];
   char clientCommand[20];
-  int charIndex = 0;
+  int charIdx = 0;
   int endOfCmd = 0;
 
   char unknownCmdMsg = "Command not recognized. Here are the available commands:\n\
@@ -294,35 +299,35 @@ int parse_client_command(char inputHashtags[], char ttweetString[])
 
   scanf("%s", clientInput);
 
-  while (clientInput[charIndex] != ' ')
+  while (clientInput[charIdx] != ' ')
   {
-    if (clientInput[charIndex] == '\0')
+    if (clientInput[charIdx] == '\0')
     {
       endOfCmd = 1;
       break;
     }
-    if (charIndex > 19)
+    if (charIdx > 19)
     { /* None of the valid commands exceed 19 chars */
       return persist_with_error(unknownCmdMsg);
     }
-    clientCommand[charIndex] = clientInput[charIndex];
-    charIndex++;
+    clientCommand[charIdx] = clientInput[charIdx];
+    charIdx++;
   }
 
-  clientCommand[charIndex] = '\0';
-  charIndex++;
+  clientCommand[charIdx] = '\0';
+  charIdx++;
 
   if (strcmp(clientCommand, "tweet") == 0)
   {
-    return check_tweet_cmd(clientInput, charIndex, inputHashtags, ttweetString);
+    return check_tweet_cmd(clientInput, charIdx, inputHashtags, ttweetString);
   }
   else if (strcmp(clientCommand, "subscribe") == 0)
   {
-    return check_subscribe_cmd(clientInput, charIndex, inputHashtags);
+    return check_subscribe_cmd(clientInput, charIdx, inputHashtags);
   }
   else if (strcmp(clientCommand, "unsubscribe") == 0)
   {
-    return check_unsubscribe_cmd(clientInput, charIndex, inputHashtags);
+    return check_unsubscribe_cmd(clientInput, charIdx, inputHashtags);
   }
   else if (strcmp(clientCommand, "timeline") == 0)
   {
@@ -338,91 +343,91 @@ int parse_client_command(char inputHashtags[], char ttweetString[])
   }
 }
 
-int check_tweet_cmd(char clientInput[], int charIndex, char inputHashtags[], char ttweetString[])
+int check_tweet_cmd(char clientInput[], int charIdx, char inputHashtags[], char ttweetString[])
 {
-  int ttweetStringIndex = 0;
-  int inputHashtagsIndex = 0;
+  int ttweetStringIdx = 0;
+  int inputHashtagsIdx = 0;
   char invalidTweetCmdMsg = "tweet command not formatted correctly. Please try again.";
 
-  if (clientInput[charIndex] != '\"')
+  if (clientInput[charIdx] != '\"')
   {
     return persist_with_error(invalidTweetCmdMsg);
   }
-  charIndex++;
-  while (clientInput[charIndex] != '\"')
+  charIdx++;
+  while (clientInput[charIdx] != '\"')
   {
-    if (ttweetStringIndex > 149)
+    if (ttweetStringIdx > MAX_TWEET_LEN - 1)
     {
-      return persist_with_error("tweet message cannot exceed 150 chars. Please try again.");
+      return persist_with_error(sprintf("tweet message cannot exceed %s chars. Please try again.", MAX_TWEET_LEN));
     }
-    ttweetString[ttweetStringIndex] = clientInput[charIndex];
-    charIndex++;
-    ttweetStringIndex++;
+    ttweetString[ttweetStringIdx] = clientInput[charIdx];
+    charIdx++;
+    ttweetStringIdx++;
   }
-  charIndex++;
-  if (clientInput[charIndex] != ' ')
+  charIdx++;
+  if (clientInput[charIdx] != ' ')
   {
     return persist_with_error(invalidTweetCmdMsg);
   }
-  charIndex++;
-  while (clientInput[charIndex] != '\0')
+  charIdx++;
+  while (clientInput[charIdx] != '\0')
   {
-    if (clientInput[charIndex] == ' ')
+    if (clientInput[charIdx] == ' ')
     {
       return persist_with_error("Invalid hashtag(s)! Hashtag cannot contain whitespaces.");
     }
-    if (inputHashtagsIndex > 25)
+    if (inputHashtagsIdx > 25)
     {
       return persist_with_error("Invalid hashtag(s)! Hashtag cannot exceed 25 chars.");
     }
-    inputHashtags[inputHashtagsIndex] = clientInput[charIndex];
-    charIndex++;
-    inputHashtagsIndex++;
+    inputHashtags[inputHashtagsIdx] = clientInput[charIdx];
+    charIdx++;
+    inputHashtagsIdx++;
   }
 
   return REQ_TWEET;
 }
 
-int check_subscribe_cmd(char clientInput[], int charIndex, char inputHashtags[])
+int check_subscribe_cmd(char clientInput[], int charIdx, char inputHashtags[])
 {
-  int inputHashtagsIndex = 0;
+  int inputHashtagsIdx = 0;
   char invalidSubscribeCmdMsg = "subscribe command not formatted correctly. Please try again.";
 
-  while (clientInput[charIndex] != '\0')
+  while (clientInput[charIdx] != '\0')
   {
-    if (clientInput[charIndex] != ' ')
+    if (clientInput[charIdx] != ' ')
     {
       return persist_with_error(invalidSubscribeCmdMsg);
     }
-    if (inputHashtagsIndex > 25)
+    if (inputHashtagsIdx > 25)
     {
       return persist_with_error("Invalid hashtag(s)! Hashtag cannot exceed 25 chars.");
     }
-    inputHashtags[inputHashtagsIndex] = clientInput[charIndex];
-    charIndex++;
-    inputHashtagsIndex++;
+    inputHashtags[inputHashtagsIdx] = clientInput[charIdx];
+    charIdx++;
+    inputHashtagsIdx++;
   }
   return REQ_SUBSCRIBE;
 }
 
-int check_unsubscribe_cmd(char clientInput[], int charIndex, char inputHashtags[])
+int check_unsubscribe_cmd(char clientInput[], int charIdx, char inputHashtags[])
 {
-  int inputHashtagsIndex = 0;
+  int inputHashtagsIdx = 0;
   char invalidUnsubscribeCmdMsg = "unsubscribe command not formatted correctly. Please try again.";
 
-  while (clientInput[charIndex] != '\0')
+  while (clientInput[charIdx] != '\0')
   {
-    if (clientInput[charIndex] != ' ')
+    if (clientInput[charIdx] != ' ')
     {
       return persist_with_error(invalidUnsubscribeCmdMsg);
     }
-    if (inputHashtagsIndex > 25)
+    if (inputHashtagsIdx > 25)
     {
       return persist_with_error("Invalid hashtag(s)! Hashtag cannot exceed 25 chars.");
     }
-    inputHashtags[inputHashtagsIndex] = clientInput[charIndex];
-    charIndex++;
-    inputHashtagsIndex++;
+    inputHashtags[inputHashtagsIdx] = clientInput[charIdx];
+    charIdx++;
+    inputHashtagsIdx++;
   }
   return REQ_UNSUBSCRIBE;
 }
@@ -480,7 +485,7 @@ void create_json_client_payload(cJSON *jobjPayload, int commandCode, char *usern
   printf("JSON payload: %s\n", cJSON_Print(jobjPayload));
 }
 
-void process_server_response(cJSON *jobjResponse)
+void handle_server_response(cJSON *jobjResponse)
 {
   int responseCode = cJSON_GetObjectItemCaseSensitive(jobjResponse, "responseCode");
   switch (responseCode)

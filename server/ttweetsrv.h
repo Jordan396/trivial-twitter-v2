@@ -29,6 +29,11 @@
 #include <signal.h>     /* for sigaction() */
 #include <arpa/inet.h>  /* for sockaddr_in and inet_ntoa() */
 
+typedef struct LatestTweet { 
+  int tweetID;
+  char *ttweetString;
+};
+
 /**
  * @brief TCP client handling function
  *

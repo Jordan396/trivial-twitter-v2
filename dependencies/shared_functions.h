@@ -5,9 +5,12 @@
  *   repository. If not, see <https://opensource.org/licenses/MIT>.         *
  ****************************************************************************/
 
-#define MAXPENDING 5      /* Maximum outstanding connection requests */
-#define RCV_BUF_SIZE 32   /* Size of receive buffer */
-#define MAX_RESP_LEN 5000 /* Maximum number of characters in response */
+#define MAX_PENDING 5       /* Maximum outstanding connection requests */
+#define MAX_CONC_CONN 5     /* Maximum number of concurrent connections */
+#define MAX_TWEET_LEN 150
+#define MAX_USERNAME_LEN 30 /* Maximum length of username */
+#define RCV_BUF_SIZE 32     /* Size of receive buffer */
+#define MAX_RESP_LEN 5000   /* Maximum number of characters in response */
 
 #define REQ_INVALID 0
 #define REQ_TWEET 1

@@ -19,24 +19,15 @@
   * This header file has been created to describe the functions in ttweetser.c.
   */
 
-#include <stdio.h>      /* for printf() and fprintf() */
+#define _GNU_SOURCE
 #include <sys/socket.h> /* for socket(), bind(), and connect() */
-#include <arpa/inet.h>  /* for sockaddr_in and inet_ntoa() */
+#include <sys/wait.h>   /* for waitpid() */
+#include <stdio.h>      /* for printf() and fprintf() */
 #include <stdlib.h>     /* for atoi() and exit() */
 #include <string.h>     /* for memset() */
 #include <unistd.h>     /* for close() */
-#include <sys/wait.h>   /* for waitpid() */
 #include <signal.h>     /* for sigaction() */
-
-/**
- * @brief Error handling function
- *
- * Description Prints the error message and exits the program gracefully.
- *
- * @param errorMessage Error message to be printed.
- * @return void
- */
-void die_with_error(char *errorMessage);
+#include <arpa/inet.h>  /* for sockaddr_in and inet_ntoa() */
 
 /**
  * @brief TCP client handling function
@@ -53,4 +44,4 @@ void die_with_error(char *errorMessage);
  *
  * @return void
  */
-void handle_ttweet_client(int clntSocket, char *ttweetMessage, char *uploadRequestStr, char *downloadRequestStr);
+void handle_ttweet_client(int clntSocket);

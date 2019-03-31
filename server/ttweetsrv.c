@@ -25,77 +25,123 @@
   */
 
 #include "ttweetsrv.h"
-#include "shared_functions.h"
 #include "cJSON.h"
+#include "shared_functions.h"
 
-void child_exit_signal_handler();     /* Function to clean up zombie child processes */
-void die_with_error(char *errorMessage);                                                                      /* Error handling function */
-void handle_ttweet_client(int clntSocket, char *ttweetString, char *uploadRequestStr, char *downloadRequestStr); /* TCP client handling function */
+void child_exit_signal_handler();          /* Function to clean up zombie child processes */
+void die_with_error(char *errorMessage);   /* Error handling function */
+void handle_ttweet_client(int clntSocket); /* TCP client handling function */
 
 /* Global so accessable by SIGCHLD signal handler */
-unsigned int childProcCount = 0;   /* Number of child processes */
+unsigned int childProcCount = 0; /* Number of child processes */
 
 int main(int argc, char *argv[])
 {
-    int servSock;                    /* Socket descriptor for server */
-    int clntSock;                    /* Socket descriptor for client */
-    unsigned short ttweetServPort;     /* Server port */
-    pid_t processID;                 /* Process ID from fork() */
-    struct sigaction myAction;       /* Signal handler specification structure */
- 
-    if (argc != 2)     /* Test for correct number of arguments */
+  int servSock;                   /* Socket descriptor for server */
+  int clntSock;                   /* Socket descriptor for client */
+  unsigned short ttweetServPort;  /* Server port */
+  pid_t processID;                /* Process ID from fork() */
+  struct sigaction signalHandler; /* Signal handler specification structure */
+
+  if (argc != 2) /* Test for correct number of arguments */
+  {
+    fprintf(stderr, "Usage: ./ttweetsrv <Port>\n", argv[0]);
+    exit(1);
+  }
+
+  ttweetServPort = atoi(argv[1]); /* First arg:  local port */
+
+  servSock = create_tcp_serv_socket(ttweetServPort);
+
+  /* Set child_exit_signal_handler() as handler function */
+  signalHandler.sa_handler = child_exit_signal_handler;
+  if (sigfillset(&signalHandler.sa_mask) < 0) /* mask all signals */
+    die_with_error("sigfillset() failed");
+  /* SA_RESTART causes interrupted system calls to be restarted */
+  signalHandler.sa_flags = SA_RESTART;
+
+  /* Set signal disposition for child-termination signals */
+  if (sigaction(SIGCHLD, &signalHandler, 0) < 0)
+    die_with_error("sigaction() failed");
+
+  for (;;) /* run forever */
+  {
+    clntSock = accept_tcp_connection(servSock);
+    /* Fork child process and report any errors */
+    if ((processID = fork()) < 0)
+      die_with_error("fork() failed");
+    else if (processID == 0) /* If this is the child process */
     {
-        fprintf(stderr, "Usage: ./ttweetsrv <Port>\n", argv[0]);
-        exit(1);
+      close(servSock); /* Child closes parent socket file descriptor */
+      handle_ttweet_client(clntSock);
+      exit(0); /* Child process done */
     }
 
-    ttweetServPort = atoi(argv[1]);  /* First arg:  local port */
-
-    servSock = CreateTCPServerSocket(ttweetServPort);
-
-    /* Set child_exit_signal_handler() as handler function */
-    myAction.sa_handler =  child_exit_signal_handler;
-    if (sigfillset(&myAction.sa_mask) < 0)   /* mask all signals */
-        die_with_error("sigfillset() failed");
-    /* SA_RESTART causes interrupted system calls to be restarted */
-    myAction.sa_flags = SA_RESTART;
-
-    /* Set signal disposition for child-termination signals */
-    if (sigaction(SIGCHLD, &myAction, 0) < 0)
-        die_with_error("sigaction() failed");
-
-    for (;;) /* run forever */
-    {
-	clntSock = AcceptTCPConnection(servSock);
-        /* Fork child process and report any errors */
-        if ((processID = fork()) < 0)
-            die_with_error("fork() failed");
-        else if (processID == 0)  /* If this is the child process */
-        {
-            close(servSock);   /* Child closes parent socket file descriptor */
-            handle_ttweet_client(clntSock);
-            exit(0);              /* Child process done */
-        }
-
-	printf("with child process: %d\n", (int) processID);
-        close(clntSock);       /* Parent closes child socket descriptor */
-        childProcCount++;      /* Increment number of outstanding child processes */
-    }
-    /* NOT REACHED */
+    printf("with child process: %d\n", (int)processID);
+    close(clntSock);  /* Parent closes child socket descriptor */
+    childProcCount++; /* Increment number of outstanding child processes */
+  }
 }
 
 void child_exit_signal_handler()
 {
-    pid_t processID;           /* Process ID from fork() */
+  pid_t processID; /* Process ID from fork() */
 
-    while (childProcCount) /* Clean up all zombies */
-    {
-	processID = waitpid((pid_t) -1, NULL, WNOHANG);  /* Non-blocking wait */
-	if (processID < 0)  /* waitpid() error? */
-	    die_with_error("waitpid() failed");
-	else if (processID == 0)  /* No child to wait on */
-	    break;
-	else
-	    childProcCount--;  /* Cleaned up after a child */
-    }
+  while (childProcCount) /* Clean up all zombies */
+  {
+    processID = waitpid((pid_t)-1, NULL, WNOHANG); /* Non-blocking wait */
+    if (processID < 0)                             /* waitpid() error? */
+      die_with_error("waitpid() failed");
+    else if (processID == 0) /* No child to wait on */
+      break;
+    else
+      childProcCount--; /* Cleaned up after a child */
+  }
+}
+
+int create_tcp_serv_socket(unsigned short port)
+{
+  int sock;                          /* socket to create */
+  struct sockaddr_in ttweetServAddr; /* Local address */
+
+  /* Create socket for incoming connections */
+  if ((sock = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)
+    die_with_error("socket() failed");
+
+  /* Construct local address structure */
+  memset(&ttweetServAddr, 0, sizeof(ttweetServAddr)); /* Zero out structure */
+  ttweetServAddr.sin_family = AF_INET;                /* Internet address family */
+  ttweetServAddr.sin_addr.s_addr = htonl(INADDR_ANY); /* Any incoming interface */
+  ttweetServAddr.sin_port = htons(port);              /* Local port */
+
+  /* Bind to the local address */
+  if (bind(sock, (struct sockaddr *)&ttweetServAddr, sizeof(ttweetServAddr)) < 0)
+    die_with_error("bind() failed");
+
+  /* Mark the socket so it will listen for incoming connections */
+  if (listen(sock, MAXPENDING) < 0)
+    die_with_error("listen() failed");
+
+  return sock;
+}
+
+int accept_tcp_connection(int servSock)
+{
+  int clntSock;                    /* Socket descriptor for client */
+  struct sockaddr_in echoClntAddr; /* Client address */
+  unsigned int clntLen;            /* Length of client address data structure */
+
+  /* Set the size of the in-out parameter */
+  clntLen = sizeof(echoClntAddr);
+
+  /* Wait for a client to connect */
+  if ((clntSock = accept(servSock, (struct sockaddr *)&echoClntAddr,
+                         &clntLen)) < 0)
+    die_with_error("accept() failed");
+
+  /* clntSock is connected to a client! */
+
+  printf("Handling client %s\n", inet_ntoa(echoClntAddr.sin_addr));
+
+  return clntSock;
 }

@@ -24,17 +24,16 @@
   * If unauthorized, notify client of unauthorized request via unauthorizedRequestMessage.
   */
 
-#include "ttweetsrv.h"
-#include "cJSON.h"
-#include "shared_functions.h"
+#include <ttweetsrv.h>
 
 void child_exit_signal_handler();          /* Function to clean up zombie child processes */
 void die_with_error(char *errorMessage);   /* Error handling function */
 void handle_ttweet_client(int clntSocket); /* TCP client handling function */
 
 /* Global variables */
-unsigned int childProcCount = 0;                   /* Number of child processes */
-char activeUsers[MAX_CONC_CONN][MAX_USERNAME_LEN]; /* Keeps track of active users */
+unsigned int childProcCount = 0; /* Number of child processes */
+LatestTweet latestTweet;
+User activeUsers[MAX_CONC_CONN]; /* Keeps track of active users */
 
 int main(int argc, char *argv[])
 {
@@ -161,19 +160,14 @@ void handle_tcp_client(int clntSocket)
 {
   cJSON *jobjResponse;
 
-  receive_response(clntSocket, jobjResponse);
-
-  /* Send received string and receive again until end of transmission */
-  while (recvMsgSize > 0) /* zero indicates end of transmission */
+  while (1)
   {
-    /* Echo message back to client */
-    if (send(clntSocket, ttweetBuffer, recvMsgSize, 0) != recvMsgSize)
-      DieWithError("send() failed");
-
-    /* See if there is more data to receive */
-    if ((recvMsgSize = recv(clntSocket, ttweetBuffer, RCVBUFSIZE, 0)) < 0)
-      DieWithError("recv() failed");
+    receive_response(clntSocket, jobjResponse);
+    handle_client_response(jobjResponse);
   }
+  
+
+  
 
   close(clntSocket); /* Close client socket */
 }
@@ -185,6 +179,7 @@ void handle_client_response(cJSON *jobjResponse)
   {
   case REQ_TWEET:
     cJSON *jarray = cJSON_GetObjectItemCaseSensitive(jobjResponse, "storedTweets");
+    ////////////////////////////
     for (int i = 0; i < cJSON_GetArraySize(jarray); i++)
     {
       printf("%s\n", cJSON_GetArrayItem(jarray, i));
@@ -208,5 +203,53 @@ void handle_client_response(cJSON *jobjResponse)
 
 void handle_tweet_updates()
 {
-  
+  int lastCheckedTweetID = 0;
+  int matchFound;
+  while (1)
+  {
+    if (lastCheckedTweetID != latestTweet.tweetID)
+    {
+      for (int userIdx = 0; userIdx < MAX_CONC_CONN; userIdx++)
+      {
+        if (activeUsers[userIdx].isSubscribedAll)
+        { /* User is subscribed to ALL - simply add tweet and take first hashtag */
+          add_tweet_to_user(activeUsers[userIdx], latestTweet.username, latestTweet.ttweetString, latestTweet.hashtags[0]);
+          continue;
+        }
+        else
+        { /* User is not subscribed to ALL - check if any subscriptions and hashtags match */
+          matchFound = 0;
+          for (int subscriptionIdx = 0; subscriptionIdx < MAX_SUBSCRIPTIONS; subscriptionIdx++)
+          { /* Iterate over current user's subscriptions */
+            for (int hashtagIdx = 0; hashtagIdx < latestTweet.numValidHashtags; hashtagIdx++)
+            { /* Iterate over lastest tweet's hashtags */
+              if (strcmp(activeUsers[userIdx].subscriptions[subscriptionIdx], latestTweet.hashtags[hashtagIdx]) == 0)
+              { /* user is subscribed to hashtag */
+                matchFound = 1;
+                add_tweet_to_user(activeUsers[userIdx], latestTweet.username, latestTweet.ttweetString, latestTweet.hashtags[hashtagIdx]);
+              }
+              if (matchFound)
+              {
+                break;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+void add_tweet_to_user(User client, char *senderUsername, char *ttweetString, char originHashtag)
+{
+  char tweetItem[MAX_ITEM_LEN];
+  strcpy(tweetItem, client.username);
+  strcat(tweetItem, " ");
+  strcat(tweetItem, senderUsername);
+  strcat(tweetItem, ": ");
+  strcat(tweetItem, ttweetString);
+  strcat(tweetItem, " ");
+  strcat(tweetItem, originHashtag);
+
+  insertNode(client.pendingTweets, client.pendingTweetsSize, tweetItem);
 }

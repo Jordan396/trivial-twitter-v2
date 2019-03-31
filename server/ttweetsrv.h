@@ -19,20 +19,32 @@
   * This header file has been created to describe the functions in ttweetser.c.
   */
 
-#define _GNU_SOURCE
-#include <sys/socket.h> /* for socket(), bind(), and connect() */
-#include <sys/wait.h>   /* for waitpid() */
-#include <stdio.h>      /* for printf() and fprintf() */
-#include <stdlib.h>     /* for atoi() and exit() */
-#include <string.h>     /* for memset() */
-#include <unistd.h>     /* for close() */
-#include <signal.h>     /* for sigaction() */
-#include <arpa/inet.h>  /* for sockaddr_in and inet_ntoa() */
+#ifndef TTWEET_COMMON_H
+#define TTWEET_COMMON_H
+#include <ttweet_common.h>
+void die_with_error(char *errorMessage);
+int persist_with_error(char *errorMessage);
+int send_payload(int sock, cJSON *jobjPayload);
+void receive_response(int sock, cJSON *jobjResponse);
+#endif
 
-typedef struct LatestTweet { 
+typedef struct LatestTweet
+{
   int tweetID;
-  char *ttweetString;
-};
+  char username[MAX_USERNAME_LEN];
+  char ttweetString[MAX_TWEET_LEN + 1]; /* +1 is for null char if tweet is MAX_HASHTAG_LEN long */
+  char *hashtags[MAX_HASHTAG_LEN];
+  int numValidHashtags;
+} LatestTweet;
+
+typedef struct User
+{
+  char username[MAX_USERNAME_LEN];
+  ListNode *pendingTweets;
+  int pendingTweetsSize;
+  char subscriptions[MAX_SUBSCRIPTIONS][MAX_HASHTAG_LEN];
+  int isSubscribedAll;
+} User;
 
 /**
  * @brief TCP client handling function
@@ -49,4 +61,5 @@ typedef struct LatestTweet {
  *
  * @return void
  */
-void handle_ttweet_client(int clntSocket);
+void
+handle_ttweet_client(int clntSocket);

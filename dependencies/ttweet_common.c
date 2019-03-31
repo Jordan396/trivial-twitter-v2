@@ -6,14 +6,13 @@
  ****************************************************************************/
 
 /**
-  * @file shared_functions.c
+  * @file ttweet_common.c
   * @author Jordan396
   * @date 29 March 2019
-  * @brief This file contains functions used in BOTH client and server side for trivial-twitter-v2.
+  * @brief This file contains functions used in both client and server side for trivial-twitter-v2.
   */
 
-#include "shared_functions.h"
-#include "cJSON.h"
+#include <ttweet_common.h>
 
 /** \copydoc die_with_error */
 void die_with_error(char *errorMessage)

@@ -19,25 +19,14 @@
   * This header file has been created to describe the functions in ttweetcli.c.
   */
 
-/**
- * TODO:
- * Add documentation for:
- * 
- */
-
-#include <stdio.h>      /* for printf() and fprintf() */
-#include <sys/socket.h> /* for socket(), bind(), and connect() */
-#include <arpa/inet.h>  /* for sockaddr_in and inet_ntoa() */
-#include <stdlib.h>     /* for atoi() and exit() */
-#include <string.h>     /* for memset() */
-#include <unistd.h>     /* for close() */
-#include <ctype.h>      /* for char validation */
-
-#define RCVBUFSIZE 32      /* Size of receive buffer */
-#define MAX_HASHTAG_CNT 15 /* Limit for hashtag count */
-#define MAX_TWEET_LEN 151
-#define MAX_HASHTAG_LEN 25
-#define MAX_REPLY_LEN 1000
+#ifndef TTWEET_COMMON_H
+#define TTWEET_COMMON_H
+#include <ttweet_common.h>
+void die_with_error(char *errorMessage);
+int persist_with_error(char *errorMessage);
+int send_payload(int sock, cJSON *jobjPayload);
+void receive_response(int sock, cJSON *jobjResponse);
+#endif
 
 /**
  * @brief Handles connection errors

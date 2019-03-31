@@ -1,31 +1,39 @@
 /**
- * @file linked_lists.c
+ * @file linked_lists_str.c
  * @brief Source code for linked list data structure and associated functions.
  *
  * Source code for linked list data structure definition and
- * commonly used linked list functions. Don't modify any code in this file!
+ * commonly used linked list functions. 
+ * 
+ * Each node references a String item.
+ * 
+ * Don't modify any code in this file!
  *
  * @author Nanyang Technological University
+ * @author Modified by Jordan396 <https://github.com/Jordan396>
  */
 
-#include "linked_lists.h"
+#include "linked_lists_str.h"
 
 void printList(ListNode *head);
 ListNode *findNode(ListNode *head, int i);
-int insertNode(ListNode **ptrHead, int index, int value);
+int insertNode(ListNode **ptrHead, int index, char *value);
 int removeNode(ListNode **ptrHead, int index);
 int sizeList(ListNode *head);
 
 // int main()
 // {
-// 	int i, pos, val, tmp;
+// 	int i, pos, tmp, counter;
+// 	char tmpStr[MAX_ITEM_LEN];
 // 	ListNode *cur, *head = NULL; /*INITIALIZE HEAD TO A NULL POINTER*/
+// 	char val[MAX_ITEM_LEN];
 
-// 	printf("Enter a list of numbers, terminated by the value -1:\n");
+// 	counter = 0;
 
-// 	scanf("%d", &i); /*ASK FOR INPUT BEFORE WHILE LOOP*/
-// 	while (i != -1)
+// 	printf("Enter 5 strings:\n");
+// 	while (counter < 5)
 // 	{
+// 		scanf("%s", val);
 // 		if (head == NULL)
 // 		{ /*CHECK IF HEAD IS NULL TO ALLOCATE SPACE TO THE FIRST NODE*/
 // 			head = malloc(sizeof(ListNode));
@@ -36,21 +44,21 @@ int sizeList(ListNode *head);
 // 			cur->next = malloc(sizeof(ListNode));
 // 			cur = cur->next;
 // 		}
-// 		cur->item = i;
-// 		scanf("%d", &i);
+// 		strcpy(cur->item, val);
+// 		counter++;
 // 	}
 
 // 	cur->next = NULL;
 
-// 	printf("Current list: ");
+// 	printf("Current list: \n");
 // 	printList(head);
 // 	printf("The size of the current linked list is %d\n", sizeList(head));
 
 // 	printf("Please enter where do you want to insert the value: ");
 // 	scanf("%d", &pos);
 // 	printf("Please enter what value you want to insert at index %d: ", pos);
-// 	scanf("%d", &val);
-// 	printf("Inserted list: ");
+// 	scanf("%s", val);
+// 	printf("Inserted list:\n");
 // 	tmp = insertNode(&head, pos, val);
 // 	printList(head);
 // 	printf("The size of the current linked list is %d\n", sizeList(head));
@@ -79,7 +87,7 @@ void printList(ListNode *head)
 	{
 		while (temp)
 		{
-			printf("%d ", temp->item);
+			printf("%s\n", temp->item);
 			temp = temp->next;
 		}
 		printf("\n");
@@ -105,21 +113,21 @@ ListNode *findNode(ListNode *head, int i)
 	return temp;
 }
 
-int insertNode(ListNode **ptrHead, int index, int value)
+int insertNode(ListNode **ptrHead, int index, char *value)
 {
 	ListNode *pre, *cur;
 	if (*ptrHead == NULL || index == 0)
 	{
 		pre = *ptrHead;
 		*ptrHead = malloc(sizeof(ListNode));
-		(*ptrHead)->item = value;
+		//(*ptrHead)->item = value;
 		(*ptrHead)->next = pre;
 		return 0; //Remember to return 0 upon successful execution
 	}
 	else if ((pre = findNode(*ptrHead, index - 1)))
 	{
 		cur = malloc(sizeof(ListNode));
-		cur->item = value;
+		strcpy(cur->item, value);
 		cur->next = pre->next;
 		pre->next = cur;
 		return 0;

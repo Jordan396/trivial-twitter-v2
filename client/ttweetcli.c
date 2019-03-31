@@ -38,9 +38,7 @@
   *   - Clean up any necessary state and close the client.
   */
 
-#include "ttweetcli.h"
-#include "shared_functions.h"
-#include "cJSON.h"
+#include <ttweetcli.h>
 
 int parse_hashtags(char *validHashtags[], int *numValidHashtags, char *inputHashtags);                                                                 /* Parses hashtags from user input */
 void save_current_hashtag(char *currentHashtagBuffer, int *currentHashtagBufferIdx, char *validHashtags[], int *numValidHashtags);                     /* Save current hashtag buffer */
@@ -57,7 +55,7 @@ int main(int argc, char *argv[])
   unsigned short ttweetServPort;     /* ttweet server port */
   char *servIP;                      /* Server IP address (dotted quad) */
 
-  /* Variables to process user commands */
+  /* Variables to handle user commands */
   int clientCommandCode;
   int clientCommandSuccess;
   char ttweetString[MAX_TWEET_LEN]; /* String to be send to ttweet server */
@@ -161,11 +159,11 @@ int main(int argc, char *argv[])
 /** \copydoc parse_hashtags */
 int parse_hashtags(char *validHashtags[], int *numValidHashtags, char *inputHashtags)
 {
-  int inputHashtagsCharIdx = 1;  /* Track char index in inputHashtags string */
-  int numConsecutiveHashes = 1;  /* Check for duplicate # within hashtag */
-  int lenInputHashtags;          /* Length of inputHashtags string */
-  char currentHashtagBuffer[25]; /* Current hashtag being parsed */
-  int currentHashtagBufferIdx;   /* char index of current hashtag being parsed */
+  int inputHashtagsCharIdx = 1;               /* Track char index in inputHashtags string */
+  int numConsecutiveHashes = 1;               /* Check for duplicate # within hashtag */
+  int lenInputHashtags;                       /* Length of inputHashtags string */
+  char currentHashtagBuffer[MAX_HASHTAG_LEN]; /* Current hashtag being parsed */
+  int currentHashtagBufferIdx;                /* char index of current hashtag being parsed */
 
   *numValidHashtags = 0;       /* Initialize number of valid hashtags */
   currentHashtagBufferIdx = 0; /* Initialize buffer index */
@@ -198,7 +196,14 @@ int parse_hashtags(char *validHashtags[], int *numValidHashtags, char *inputHash
       }
       else
       { /* Reached end of current hashtag. Save and prepare to parse next hashtag. */
-        save_current_hashtag(currentHashtagBuffer, &currentHashtagBufferIdx, validHashtags, numValidHashtags);
+        if (numValidHashtags == MAX_HASHTAG_CNT)
+        { /* Hashtag limit exceeded */
+          return persist_with_error(sprintf("Invalid hashtag(s)! Hashtag limit of %d exceeded.", MAX_HASHTAG_CNT));
+        }
+        else
+        {
+          save_current_hashtag(currentHashtagBuffer, &currentHashtagBufferIdx, validHashtags, numValidHashtags);
+        }
       }
     }
     else if (isalnum(inputHashtags[inputHashtagsCharIdx]) != 0)
@@ -215,12 +220,15 @@ int parse_hashtags(char *validHashtags[], int *numValidHashtags, char *inputHash
   }
 
   /* Reached end of inputHashtags */
-  save_current_hashtag(currentHashtagBuffer, &currentHashtagBufferIdx, validHashtags, numValidHashtags);
-
-  if (numValidHashtags > 8)
-  { /* Limit of 8 hashtags exceeded */
-    return persist_with_error("Invalid hashtag(s)! Limit of 8 hashtags exceeded.");
+  if (numValidHashtags == MAX_HASHTAG_CNT)
+  { /* Hashtag limit exceeded */
+    return persist_with_error(sprintf("Invalid hashtag(s)! Hashtag limit of %d exceeded.", MAX_HASHTAG_CNT));
   }
+  else
+  {
+    save_current_hashtag(currentHashtagBuffer, &currentHashtagBufferIdx, validHashtags, numValidHashtags);
+  }
+
   if (has_duplicate_string(validHashtags, numValidHashtags))
   { /* validHashtags contain duplicate hashtags */
     return persist_with_error("Invalid hashtag(s)! Duplicate hashtags detected.");
@@ -469,7 +477,8 @@ void create_json_client_payload(cJSON *jobjPayload, int commandCode, char *usern
       cJSON_AddItemToArray(jarray, cJSON_CreateString(validHashtags[i]));
     }
     cJSON_AddItemToObject(jobjPayload, "ttweetString", cJSON_CreateString(ttweetString)); /*Add ttweetString to JSON object*/
-    cJSON_AddItemToObject(jobjPayload, "ttweetHashtags", jarray);                         /*Add hashtags to JSON object*/
+    cJSON_AddItemToObject(jobjPayload, "numValidHashtags", cJSON_CreateNumber(numValidHashtags));
+    cJSON_AddItemToObject(jobjPayload, "ttweetHashtags", jarray); /*Add hashtags to JSON object*/
     break;
   case REQ_SUBSCRIBE:
   case REQ_UNSUBSCRIBE:

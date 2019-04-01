@@ -51,6 +51,9 @@ int main(int argc, char *argv[])
   ttweetServPort = atoi(argv[1]); /* First arg:  local port */
   servSock = create_tcp_serv_socket(ttweetServPort);
 
+  /* Initialize activeUsers array */
+  initializeUserArray();
+
   /* Set child_exit_signal_handler() as handler function */
   signalHandler.sa_handler = child_exit_signal_handler;
   if (sigfillset(&signalHandler.sa_mask) < 0) /* mask all signals */
@@ -156,49 +159,181 @@ int accept_tcp_connection(int servSock)
   return clntSock;
 }
 
-void handle_tcp_client(int clntSocket)
+void handle_ttweet_client(int clntSocket)
 {
-  cJSON *jobjResponse;
+  cJSON *jobjReceived;
+  int clientUserIdx = INVALID_USER_INDEX;
+  int loop = 1;
 
-  while (1)
+  while (loop)
   {
-    receive_response(clntSocket, jobjResponse);
-    handle_client_response(jobjResponse);
+    receive_response(clntSocket, jobjReceived);
+    loop = handle_client_response(clntSocket, jobjReceived, &clientUserIdx);
   }
-  
-
-  
 
   close(clntSocket); /* Close client socket */
 }
 
-void handle_client_response(cJSON *jobjResponse)
+int handle_client_response(int clntSocket, cJSON *jobjReceived, int *clientUserIdx)
 {
-  int requestCode = cJSON_GetObjectItemCaseSensitive(jobjResponse, "requestCode");
+  int requestCode;
+  cJSON *jobjToSend;
+  char *senderUsername;
+  char *receiverUsername;
+
+  requestCode = cJSON_GetObjectItemCaseSensitive(jobjReceived, "requestCode");
+  senderUsername = cJSON_GetObjectItemCaseSensitive(jobjReceived, "username");
+
   switch (requestCode)
   {
-  case REQ_TWEET:
-    cJSON *jarray = cJSON_GetObjectItemCaseSensitive(jobjResponse, "storedTweets");
-    ////////////////////////////
-    for (int i = 0; i < cJSON_GetArraySize(jarray); i++)
-    {
-      printf("%s\n", cJSON_GetArrayItem(jarray, i));
-    }
+  case REQ_VALIDATE_USER:
+    handle_validate_user_request(jobjToSend, senderUsername, clientUserIdx);
     break;
-  case RES_VALIDATE_USER:
-    int isUserValid = cJSON_GetObjectItemCaseSensitive(jobjResponse, "isUserValid");
-    if (isUserValid)
+  case REQ_TWEET:
+    handle_tweet_request(jobjToSend, jobjReceived, senderUsername, clientUserIdx);
+    break;
+  case REQ_SUBSCRIBE:
+    handle_subscribe_request(jobjToSend, jobjReceived, senderUsername, &clientUserIdx);
+    break;
+  case REQ_UNSUBSCRIBE:
+    handle_unsubscribe_request(jobjToSend, jobjReceived, senderUsername, &clientUserIdx);
+    break;
+  case REQ_EXIT:
+    return handle_exit_request(&clientUserIdx);
+    break;
+  case REQ_INVALID:
+  default:
+    return handle_invalid_request(&clientUserIdx);
+  }
+
+  if (!send_payload(clntSocket, jobjToSend))
+  {
+    printf("Server payload sent successfully.\n");
+  }
+  else
+  {
+    printf("Server payload failed to send.\n");
+  }
+
+  reset_server_variables(jobjToSend);
+}
+
+void handle_validate_user_request(cJSON *jobjToSend, char *senderUsername, int *clientUserIdx)
+{
+  int isUserValid = 1;
+  int isSpaceAvailable = 0;
+
+  for (int userIdx = 0; userIdx < MAX_CONC_CONN; userIdx++)
+  {
+    if (activeUsers[userIdx].isOccupied)
     {
-      printf("Username legal. Connection established.");
+      if (strcmp(activeUsers[userIdx].username, *senderUsername) == 0)
+      { /* username already taken */
+        create_json_server_payload(jobjToSend, RES_USER_INVALID, INVALID_USER_INDEX, "Username already taken.");
+        isUserValid = 0;
+        break;
+      }
     }
     else
     {
-      die_with_error("Username already taken. Please try again with a different username.");
+      isSpaceAvailable = 1;
     }
-  default:
-    die_with_error("Error! Server sent an invalid response code.");
-    break;
   }
+
+  if (isUserValid && isSpaceAvailable)
+  {
+    for (int userIdx = 0; userIdx < MAX_CONC_CONN; userIdx++)
+    {
+      if (!activeUsers[userIdx].isOccupied)
+      {
+        create_json_server_payload(jobjToSend, RES_USER_VALID, userIdx, "Username is valid.");
+        activeUsers[userIdx].isOccupied = 1; /* mark index as occupied */
+        break;
+      }
+    }
+  }
+  else if (isUserValid && !isSpaceAvailable)
+  { /* all connections are active */
+    create_json_server_payload(jobjToSend, RES_USER_INVALID, INVALID_USER_INDEX, "All connections occupied.");
+  }
+}
+
+void handle_tweet_request(cJSON *jobjToSend, cJSON *jobjReceived, char *senderUsername, int *clientUserIdx)
+{
+  store_latest_tweet(jobjReceived, senderUsername);
+  create_json_server_payload(jobjToSend, RES_TWEET, *clientUserIdx, "");
+}
+
+void handle_subscribe_request(cJSON *jobjToSend, cJSON *jobjReceived, char *senderUsername, int *clientUserIdx)
+{
+  int isSubscriptionExists = 0;
+  int isSubscriptionsFull = 1;
+  char *subscriptionHashtag = cJSON_GetObjectItemCaseSensitive(jobjReceived, "subscriptionHashtag");
+  char *existingSubscriptions = "";
+
+  for (int subscriptionIdx = 0; subscriptionIdx < MAX_SUBSCRIPTIONS; subscriptionIdx++)
+  {
+    if (activeUsers[*clientUserIdx].subscriptions[subscriptionIdx])
+    {                                                                                            /* subscription exists in this position of the user's subscriptions array */
+      strcat(existingSubscriptions, activeUsers[*clientUserIdx].subscriptions[subscriptionIdx]); /* collect existing subscriptions */
+      strcat(existingSubscriptions, "\n");
+
+      if (strcmp(activeUsers[*clientUserIdx].subscriptions[subscriptionIdx], subscriptionHashtag) == 0)
+      { /* subscription hashtag already exists */
+        isSubscriptionExists = 1;
+      }
+    }
+    else
+    { /* not all subscription spaces are occupied */
+      isSubscriptionsFull = 0;
+    }
+  }
+  if (isSubscriptionsFull)
+  {
+    create_json_server_payload(jobjToSend, RES_SUBSCRIBE, *clientUserIdx, sprintf("Subscription list full. Please unsubscribe to one of the following hashtags first:\n%s", existingSubscriptions));
+  }
+  else if (isSubscriptionExists)
+  {
+    create_json_server_payload(jobjToSend, RES_SUBSCRIBE, *clientUserIdx, "Subscription already exists.\n");
+  }
+}
+void handle_unsubscribe_request(cJSON *jobjToSend, cJSON *jobjReceived, char *senderUsername, int *clientUserIdx)
+{
+  int isSubscriptionExists = 0;
+  char *subscriptionHashtag = cJSON_GetObjectItemCaseSensitive(jobjReceived, "subscriptionHashtag");
+
+  for (int subscriptionIdx = 0; subscriptionIdx < MAX_SUBSCRIPTIONS; subscriptionIdx++)
+  {
+    if (activeUsers[*clientUserIdx].subscriptions[subscriptionIdx])
+    { /* subscription exists in this position of the user's subscriptions array */
+      if (strcmp(activeUsers[*clientUserIdx].subscriptions[subscriptionIdx], subscriptionHashtag) == 0)
+      { /* subscription hashtag already exists */
+        isSubscriptionExists = 1;
+        free(activeUsers[*clientUserIdx].subscriptions[subscriptionIdx]);
+        break;
+      }
+    }
+  }
+  if (isSubscriptionExists)
+  {
+    create_json_server_payload(jobjToSend, RES_UNSUBSCRIBE, *clientUserIdx, "Successfully unsubscribed.");
+  }
+}
+
+void handle_timeline_request(cJSON *jobjToSend, int *clientUserIdx)
+{
+  create_json_server_payload(jobjToSend, RES_TIMELINE, *clientUserIdx, "");
+}
+
+int handle_exit_request(int *userIdx)
+{
+  /* mark entry as unoccupied */
+  activeUsers[*userIdx].isOccupied = 0;
+  return 0;
+}
+void handle_invalid_request()
+{
+  return 0;
 }
 
 void handle_tweet_updates()
@@ -209,8 +344,13 @@ void handle_tweet_updates()
   {
     if (lastCheckedTweetID != latestTweet.tweetID)
     {
+      waitFor(2); /* Ensure all latestTweet fields have been updated */
       for (int userIdx = 0; userIdx < MAX_CONC_CONN; userIdx++)
       {
+        if (!activeUsers[userIdx].isOccupied)
+        { /* if User array element is not occupied, there's no need to check it */
+          continue;
+        }
         if (activeUsers[userIdx].isSubscribedAll)
         { /* User is subscribed to ALL - simply add tweet and take first hashtag */
           add_tweet_to_user(activeUsers[userIdx], latestTweet.username, latestTweet.ttweetString, latestTweet.hashtags[0]);
@@ -252,4 +392,87 @@ void add_tweet_to_user(User client, char *senderUsername, char *ttweetString, ch
   strcat(tweetItem, originHashtag);
 
   insertNode(client.pendingTweets, client.pendingTweetsSize, tweetItem);
+}
+
+void waitFor(unsigned int secs)
+{
+  unsigned int retTime = time(0) + secs; // Get finishing time.
+  while (time(0) < retTime)
+    ; // Loop until it arrives.
+}
+
+void initializeUserArray()
+{
+  for (int i = 0; i < MAX_CONC_CONN; i++)
+  {
+    activeUsers[i].isOccupied = 0;
+  }
+}
+
+void create_json_server_payload(cJSON *jobjToSend, int commandCode, int userIdx, char *detailedMessage)
+{
+  jobjToSend = cJSON_CreateObject();
+  cJSON_AddItemToObject(jobjToSend, "responseCode", cJSON_CreateNumber(commandCode));               /*Add command to JSON object*/
+  cJSON_AddItemToObject(jobjToSend, "username", cJSON_CreateString(activeUsers[userIdx].username)); /*Add username to JSON object*/
+  cJSON_AddItemToObject(jobjToSend, "clientUserIdx", cJSON_CreateNumber(userIdx));                  /*Add user index to JSON object*/
+  cJSON_AddStringToObject(jobjToSend, "detailedMessage", cJSON_CreateString(detailedMessage));
+
+  switch (commandCode)
+  {
+  case REQ_TIMELINE:
+    add_pending_tweets_to_jobj(jobjToSend, activeUsers[userIdx].pendingTweets);
+    break;
+  case RES_SUBSCRIBE:
+  case REQ_UNSUBSCRIBE:
+  case REQ_TWEET:
+    break;
+  default:
+    die_with_error("Error! create_json_server_payload() received an invalid request.");
+    break;
+  }
+
+  printf("JSON payload: %s\n", cJSON_Print(jobjToSend));
+}
+
+void add_pending_tweets_to_jobj(cJSON *jobj, ListNode *head)
+{
+  cJSON *jarray = cJSON_CreateArray(); /*Creating a json array*/
+  ListNode *current = head;
+  ListNode *nextNode;
+  if (current == NULL)
+  { /* no pending tweets */
+    cJSON_AddItemToArray(jarray, cJSON_CreateString("No tweets available"));
+  }
+  else
+  {
+    while (current)
+    { /* frees the linked list while traversing */
+      cJSON_AddItemToArray(jarray, current->item);
+      nextNode = current->next;
+      free(current);
+      current = nextNode;
+    }
+  }
+  cJSON_AddItemToObject(jobj, "storedTweets", jarray); /*Add tweets to JSON object*/
+}
+
+/** \copydoc reset_server_variables */
+void reset_server_variables(cJSON *jobjToSend)
+{
+  if (!jobjToSend)
+  {
+    cJSON_Delete(jobjToSend);
+  }
+}
+
+void store_latest_tweet(cJSON *jobjReceived, char *senderUsername)
+{
+  (latestTweet.tweetID)++;
+  strcpy(latestTweet.username, senderUsername);
+  cJSON *jarray = cJSON_GetObjectItemCaseSensitive(jobjReceived, "ttweetHashtags");
+  latestTweet.numValidHashtags = cJSON_GetArraySize(jarray);
+  for (int i = 0; i < latestTweet.numValidHashtags; i++)
+  {
+    strcpy(latestTweet.hashtags[i], cJSON_GetArrayItem(jarray, i));
+  }
 }

@@ -28,16 +28,16 @@ int persist_with_error(char *errorMessage)
   return 0;
 }
 
-int send_payload(int sock, cJSON *jobjPayload)
+int send_payload(int sock, cJSON *jobjToSend)
 {
-  int jobjPayloadSize = sizeof(jobjPayload);
-  if (send(sock, &jobjPayloadSize, sizeof(int), 0) != sizeof(int))
+  int jobjToSendSize = sizeof(jobjToSend);
+  if (send(sock, &jobjToSendSize, sizeof(int), 0) != sizeof(int))
     return persist_with_error("Block size: send() sent a different number of bytes than expected");
-  if (send(sock, jobjPayload, jobjPayloadSize, 0) != jobjPayloadSize)
+  if (send(sock, jobjToSend, jobjToSendSize, 0) != jobjToSendSize)
     return persist_with_error("Block contents: send() sent a different number of bytes than expected");
 }
 
-void receive_response(int sock, cJSON *jobjResponse)
+void receive_response(int sock, cJSON *jobjReceived)
 {
   int bytesToRecv;
   int responseIdx = 0;
@@ -62,6 +62,6 @@ void receive_response(int sock, cJSON *jobjResponse)
     bytesToRecv -= RCV_BUF_SIZE;
   }
 
-  jobjResponse = cJSON_Parse(response);
-  printf("JSON response: %s\n", cJSON_Print(jobjResponse));
+  jobjReceived = cJSON_Parse(response);
+  printf("JSON response: %s\n", cJSON_Print(jobjReceived));
 }

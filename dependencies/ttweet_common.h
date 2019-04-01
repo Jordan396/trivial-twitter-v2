@@ -34,16 +34,21 @@
 #define RES_UNSUBSCRIBE 13
 #define RES_TIMELINE 14
 #define RES_EXIT 15
-#define RES_VALIDATE_USER 16
+#define RES_USER_VALID 16
+#define RES_USER_INVALID 17
+
+/* Other constants */
+#define INVALID_USER_INDEX 72
 
 /* Standard libraries */
 #define _GNU_SOURCE
-#include <stdio.h>      /* for printf() and fprintf() */
-#include <stdlib.h>     /* for atoi() and exit() */
-#include <string.h>     /* for memset() */
-#include <unistd.h>     /* for close() */
-#include <signal.h>     /* for sigaction() */
-#include <ctype.h>      /* for char validation */
+#include <stdio.h>  /* for printf() and fprintf() */
+#include <stdlib.h> /* for atoi() and exit() */
+#include <string.h> /* for memset() */
+#include <unistd.h> /* for close() */
+#include <signal.h> /* for sigaction() */
+#include <ctype.h>  /* for char validation */
+#include <time.h>
 #include <sys/socket.h> /* for socket(), bind(), and connect() */
 #include <sys/wait.h>   /* for waitpid() */
 #include <arpa/inet.h>  /* for sockaddr_in and inet_ntoa() */
@@ -81,5 +86,5 @@ void die_with_error(char *errorMessage);
  */
 int persist_with_error(char *errorMessage);
 
-int send_payload(int sock, cJSON *jobjPayload);
-void receive_response(int sock, cJSON *jobjResponse);
+int send_payload(int sock, cJSON *jobjToSend);
+void receive_response(int sock, cJSON *jobjReceived);

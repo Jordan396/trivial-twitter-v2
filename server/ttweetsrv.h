@@ -24,8 +24,8 @@
 #include <ttweet_common.h>
 void die_with_error(char *errorMessage);
 int persist_with_error(char *errorMessage);
-int send_payload(int sock, cJSON *jobjPayload);
-void receive_response(int sock, cJSON *jobjResponse);
+int send_payload(int sock, cJSON *jobjToSend);
+void receive_response(int sock, cJSON *jobjReceived);
 #endif
 
 typedef struct LatestTweet
@@ -39,6 +39,7 @@ typedef struct LatestTweet
 
 typedef struct User
 {
+  int isOccupied;
   char username[MAX_USERNAME_LEN];
   ListNode *pendingTweets;
   int pendingTweetsSize;

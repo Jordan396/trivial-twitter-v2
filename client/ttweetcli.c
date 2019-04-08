@@ -78,10 +78,11 @@ int main(int argc, char *argv[])
 
   /* Variables for server to recognize client */
   int userIdx = INVALID_USER_INDEX;
+  printf("Arguments: %d\n", argc);
 
   if (argc != 3) /* Test for correct number of arguments */
   {
-    die_with_error("Command not recognized!\nUsage: $./ttweetcl <ServerIP> <ServerPort> <Username>");
+    die_with_error("Command not recognized!\nUsage: $./ttweetcli <ServerIP> <ServerPort> <Username>");
   }
 
   servIP = argv[1];               /* Server IP address (dotted quad) */

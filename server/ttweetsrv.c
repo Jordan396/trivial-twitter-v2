@@ -40,12 +40,11 @@ int handle_exit_request(int *userIdx);
 int handle_invalid_request();
 void handle_tweet_updates();
 void add_tweet_to_user(User client, char *senderUsername, char *ttweetString, char *originHashtag);
-void waitFor(unsigned int secs);
 void initializeUserArray();
 void create_json_server_payload(cJSON *jobjToSend, int commandCode, int userIdx, char *detailedMessage);
 void add_pending_tweets_to_jobj(cJSON *jobj, ListNode *head);
-void reset_server_variables(cJSON *jobjToSend);
 void store_latest_tweet(cJSON *jobjReceived, char *senderUsername);
+void print_active_users();
 
 /* Global variables */
 unsigned int childProcCount = 0; /* Number of child processes */
@@ -178,14 +177,21 @@ int accept_tcp_connection(int servSock)
 
 void handle_ttweet_client(int clntSocket)
 {
-  cJSON *jobjReceived;
+  char objReceived[MAX_RESP_LEN];
   int clientUserIdx = INVALID_USER_INDEX;
   int loop = 1;
 
   while (loop)
   {
-    receive_response(clntSocket, jobjReceived);
+    printf("Active Users:\n");
+    print_active_users();
+    cJSON *jobjReceived = cJSON_CreateObject();
+    receive_response(clntSocket, objReceived);
+    printf("objReceived outside: %s\n", objReceived);
+    jobjReceived = cJSON_Parse(objReceived);
+    printf("JSON request: %s\n", cJSON_Print(jobjReceived));
     loop = handle_client_response(clntSocket, jobjReceived, &clientUserIdx);
+    cJSON_Delete(jobjReceived);
   }
 
   close(clntSocket); /* Close client socket */
@@ -194,12 +200,18 @@ void handle_ttweet_client(int clntSocket)
 int handle_client_response(int clntSocket, cJSON *jobjReceived, int *clientUserIdx)
 {
   int requestCode;
-  cJSON *jobjToSend;
   char *senderUsername;
   char *receiverUsername;
+  cJSON *jobjToSend = cJSON_CreateObject();
+
+  printf("Handling client request...\n");
+  printf("JSON request: %s\n", cJSON_Print(jobjReceived));
 
   requestCode = cJSON_GetObjectItemCaseSensitive(jobjReceived, "requestCode")->valueint;
   senderUsername = cJSON_GetObjectItemCaseSensitive(jobjReceived, "username")->valuestring;
+
+  printf("Client request code: %d\n", requestCode);
+  printf("Client username: %s\n", senderUsername);
 
   switch (requestCode)
   {
@@ -223,7 +235,7 @@ int handle_client_response(int clntSocket, cJSON *jobjReceived, int *clientUserI
     return handle_invalid_request(clientUserIdx);
   }
 
-  if (!send_payload(clntSocket, jobjToSend))
+  if (send_payload(clntSocket, jobjToSend))
   {
     printf("Server payload sent successfully.\n");
   }
@@ -232,11 +244,15 @@ int handle_client_response(int clntSocket, cJSON *jobjReceived, int *clientUserI
     printf("Server payload failed to send.\n");
   }
 
-  reset_server_variables(jobjToSend);
+  cJSON_Delete(jobjToSend);
+  return 1;
 }
 
 void handle_validate_user_request(cJSON *jobjToSend, char *senderUsername, int *clientUserIdx)
 {
+  printf("Handling user validation...\n");
+  printf("Sender username: %s\n", senderUsername);
+
   int isUserValid = 1;
   int isSpaceAvailable = 0;
 
@@ -244,11 +260,12 @@ void handle_validate_user_request(cJSON *jobjToSend, char *senderUsername, int *
   {
     if (activeUsers[userIdx].isOccupied)
     {
+      printf("User index %d is occupied by %s.\n", userIdx, activeUsers[userIdx].username);
       if (strcmp(activeUsers[userIdx].username, senderUsername) == 0)
       { /* username already taken */
         create_json_server_payload(jobjToSend, RES_USER_INVALID, INVALID_USER_INDEX, "Username already taken.");
         isUserValid = 0;
-        break;
+        return;
       }
     }
     else
@@ -263,8 +280,9 @@ void handle_validate_user_request(cJSON *jobjToSend, char *senderUsername, int *
     {
       if (!activeUsers[userIdx].isOccupied)
       {
-        create_json_server_payload(jobjToSend, RES_USER_VALID, userIdx, "Username is valid.");
         activeUsers[userIdx].isOccupied = 1; /* mark index as occupied */
+        strcpy(activeUsers[userIdx].username, senderUsername);
+        create_json_server_payload(jobjToSend, RES_USER_VALID, userIdx, "Username is valid.");
         break;
       }
     }
@@ -348,6 +366,7 @@ int handle_exit_request(int *userIdx)
 {
   /* mark entry as unoccupied */
   activeUsers[*userIdx].isOccupied = 0;
+  printf("Client at index %d exited.", *userIdx);
   return 0;
 }
 int handle_invalid_request()
@@ -413,13 +432,6 @@ void add_tweet_to_user(User client, char *senderUsername, char *ttweetString, ch
   insertNode(&(client.pendingTweets), client.pendingTweetsSize, tweetItem);
 }
 
-void waitFor(unsigned int secs)
-{
-  unsigned int retTime = time(0) + secs; // Get finishing time.
-  while (time(0) < retTime)
-    ; // Loop until it arrives.
-}
-
 void initializeUserArray()
 {
   for (int i = 0; i < MAX_CONC_CONN; i++)
@@ -430,20 +442,25 @@ void initializeUserArray()
 
 void create_json_server_payload(cJSON *jobjToSend, int commandCode, int userIdx, char *detailedMessage)
 {
-  jobjToSend = cJSON_CreateObject();
+
   cJSON_AddItemToObject(jobjToSend, "responseCode", cJSON_CreateNumber(commandCode));               /*Add command to JSON object*/
   cJSON_AddItemToObject(jobjToSend, "username", cJSON_CreateString(activeUsers[userIdx].username)); /*Add username to JSON object*/
   cJSON_AddItemToObject(jobjToSend, "clientUserIdx", cJSON_CreateNumber(userIdx));                  /*Add user index to JSON object*/
   cJSON_AddItemToObject(jobjToSend, "detailedMessage", cJSON_CreateString(detailedMessage));
 
+  printf("Response code: %d\n", commandCode);
+
   switch (commandCode)
   {
-  case REQ_TIMELINE:
+  case RES_TIMELINE:
     add_pending_tweets_to_jobj(jobjToSend, activeUsers[userIdx].pendingTweets);
     break;
   case RES_SUBSCRIBE:
-  case REQ_UNSUBSCRIBE:
-  case REQ_TWEET:
+  case RES_UNSUBSCRIBE:
+  case RES_TWEET:
+  case RES_EXIT:
+  case RES_USER_VALID:
+  case RES_USER_INVALID:
     break;
   default:
     die_with_error("Error! create_json_server_payload() received an invalid request.");
@@ -474,16 +491,6 @@ void add_pending_tweets_to_jobj(cJSON *jobj, ListNode *head)
   }
   cJSON_AddItemToObject(jobj, "storedTweets", jarray); /*Add tweets to JSON object*/
 }
-
-/** \copydoc reset_server_variables */
-void reset_server_variables(cJSON *jobjToSend)
-{
-  if (!jobjToSend)
-  {
-    cJSON_Delete(jobjToSend);
-  }
-}
-
 void store_latest_tweet(cJSON *jobjReceived, char *senderUsername)
 {
   (latestTweet.tweetID)++;
@@ -493,5 +500,20 @@ void store_latest_tweet(cJSON *jobjReceived, char *senderUsername)
   for (int i = 0; i < latestTweet.numValidHashtags; i++)
   {
     strcpy(latestTweet.hashtags[i], cJSON_GetArrayItem(jarray, i)->valuestring);
+  }
+}
+
+void print_active_users()
+{
+  for (int userIdx = 0; userIdx < MAX_CONC_CONN; userIdx++)
+  {
+    printf("User index %d:\n", userIdx);
+    printf("isOccupied: %d\n", activeUsers[userIdx].isOccupied);
+    printf("username: %s\n", activeUsers[userIdx].username);
+    printf("isSubscribedAll: %d\n", activeUsers[userIdx].isSubscribedAll);
+    // printf("isOccupied: %d\n", activeUsers[userIdx].pendingTweets);
+    // printf("isOccupied: %d\n", activeUsers[userIdx].pendingTweetsSize);
+    // printf("isOccupied: %d\n", activeUsers[userIdx].subscriptions);
+
   }
 }

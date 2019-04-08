@@ -19,14 +19,14 @@
   * This header file has been created to describe the functions in ttweetcli.c.
   */
 
-
 #ifndef TTWEET_COMMON_H
 #define TTWEET_COMMON_H
 #include "../dependencies/ttweet_common.h"
 void die_with_error(char *errorMessage);
 int persist_with_error(char *errorMessage);
 int send_payload(int sock, cJSON *jobjToSend);
-void receive_response(int sock, cJSON *jobjReceived);
+void waitFor(unsigned int secs);
+void receive_response(int sock, char *objReceived);
 #endif
 
 /**
@@ -52,7 +52,6 @@ int check_subscribe_cmd(char clientInput[], int charIdx, char inputHashtags[]);
 int check_unsubscribe_cmd(char clientInput[], int charIdx, char inputHashtags[]);
 int check_timeline_cmd(int endOfCmd);
 int check_exit_cmd(int endOfCmd);
-void create_json_client_payload(cJSON *jobjToSend, int commandCode, char *username, int userIdx, char *ttweetString, char *validHashtags[], int numValidHashtags);
 void handle_server_response(cJSON *jobjReceived, int *userIdx);
 
 /**

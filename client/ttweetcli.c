@@ -40,12 +40,11 @@
 
 #include "ttweetcli.h"
 
-int parse_hashtags(char *validHashtags[], int *numValidHashtags, char *inputHashtags);                                                                             /* Parses hashtags from user input */
-void save_current_hashtag(char *currentHashtagBuffer, int *currentHashtagBufferIdx, char *validHashtags[], int *numValidHashtags);                                 /* Save current hashtag buffer */
-void create_json_client_payload(cJSON *jobjToSend, int commandCode, char *username, int userIdx, char *ttweetString, char *validHashtags[], int numValidHashtags); /* Create a JSON client payload */
-void reset_client_variables(int *clientCommandSuccess, char *validHashtags[], int *numValidHashtags, cJSON *jobjToSend);                                           /* Resets client variables to prepare for the next command */
-void deallocate_string_array(char *stringArray[], int numStringsInArray);                                                                                          /* Deallocates memory from a dynamic string array */
-int has_duplicate_string(char *stringArray[], int numStringsInArray);                                                                                              /* Checks for duplicates in string array */
+int parse_hashtags(char *validHashtags[], int *numValidHashtags, char *inputHashtags);                                             /* Parses hashtags from user input */
+void save_current_hashtag(char *currentHashtagBuffer, int *currentHashtagBufferIdx, char *validHashtags[], int *numValidHashtags); /* Save current hashtag buffer */
+void reset_client_variables(int *clientCommandSuccess, char *validHashtags[], int *numValidHashtags, cJSON *jobjToSend);           /* Resets client variables to prepare for the next command */
+void deallocate_string_array(char *stringArray[], int numStringsInArray);                                                          /* Deallocates memory from a dynamic string array */
+int has_duplicate_string(char *stringArray[], int numStringsInArray);                                                              /* Checks for duplicates in string array */
 int parse_client_command(char inputHashtags[], char ttweetString[]);
 int check_tweet_cmd(char clientInput[], int charIdx, char inputHashtags[], char ttweetString[]);
 int check_subscribe_cmd(char clientInput[], int charIdx, char inputHashtags[]);
@@ -75,10 +74,10 @@ int main(int argc, char *argv[])
   /* Variables used to handle transfer of data over TCP */
   cJSON *jobjToSend;   /* JSON payload to be sent */
   cJSON *jobjReceived; /* JSON response received */
+  char objReceived[MAX_RESP_LEN];
 
   /* Variables for server to recognize client */
   int userIdx = INVALID_USER_INDEX;
-  printf("Arguments: %d\n", argc);
 
   if (argc != 4) /* Test for correct number of arguments */
   {
@@ -104,16 +103,20 @@ int main(int argc, char *argv[])
     die_with_error("connect() failed");
 
   /* Upload username to server for validation */
+  jobjToSend = cJSON_CreateObject();
   create_json_client_payload(jobjToSend, REQ_VALIDATE_USER, username, INVALID_USER_INDEX, ttweetString, validHashtags, numValidHashtags);
   send_payload(sock, jobjToSend);
 
   /* Process validation code from server */
-  receive_response(sock, jobjReceived);
+  receive_response(sock, objReceived);
+  jobjReceived = cJSON_Parse(objReceived);
+  printf("Formatted response from server: %s\n", cJSON_Print(jobjReceived));
   handle_server_response(jobjReceived, &userIdx);
 
   while (1)
   { /* Loop continuously */
     reset_client_variables(&clientCommandSuccess, validHashtags, &numValidHashtags, jobjToSend);
+    jobjToSend = cJSON_CreateObject();
     clientCommandCode = parse_client_command(inputHashtags, ttweetString);
 
     switch (clientCommandCode)
@@ -134,10 +137,10 @@ int main(int argc, char *argv[])
       }
       break;
     case REQ_TIMELINE:
-      /* timeline */
-      break;
     case REQ_EXIT:
-      /* exit */
+      break;
+    case REQ_INVALID:
+      clientCommandSuccess = persist_with_error("Invalid command entered.");
       break;
     default:
       die_with_error("An error occured. Exiting client...");
@@ -161,13 +164,18 @@ int main(int argc, char *argv[])
 
     if (clientCommandCode == REQ_EXIT)
     {
-      printf("Exiting client...");
+      printf("Exiting client...\n");
+      waitFor(5);
       close(sock);
       exit(0);
     }
 
-    receive_response(sock, jobjReceived);
-    handle_server_response(jobjReceived, &userIdx);
+    if (clientCommandSuccess)
+    {
+      receive_response(sock, objReceived);
+      jobjReceived = cJSON_Parse(objReceived);
+      handle_server_response(jobjReceived, &userIdx);
+    }
   }
 }
 
@@ -484,7 +492,8 @@ int check_exit_cmd(int endOfCmd)
 
 void create_json_client_payload(cJSON *jobjToSend, int commandCode, char *username, int userIdx, char *ttweetString, char *validHashtags[], int numValidHashtags)
 {
-  jobjToSend = cJSON_CreateObject();
+  printf("Creating json client payload...\n");
+  printf("Request code: %d\n", commandCode);
   cJSON_AddItemToObject(jobjToSend, "requestCode", cJSON_CreateNumber(commandCode)); /*Add command to JSON object*/
   cJSON_AddItemToObject(jobjToSend, "username", cJSON_CreateString(username));       /*Add username to JSON object*/
 
@@ -507,18 +516,20 @@ void create_json_client_payload(cJSON *jobjToSend, int commandCode, char *userna
     cJSON_AddItemToObject(jobjToSend, "subscriptionHashtag", cJSON_CreateString(validHashtags[0])); /*Add target hashtag to JSON object*/
     break;
   case REQ_TIMELINE:
+  case REQ_VALIDATE_USER:
+  case REQ_EXIT:
     break;
   default:
     die_with_error("Error! Client attempted to create an invalid JSON payload.");
     break;
   }
-
-  printf("JSON payload: %s\n", cJSON_Print(jobjToSend));
 }
 
 void handle_server_response(cJSON *jobjReceived, int *userIdx)
 {
   int responseCode = cJSON_GetObjectItemCaseSensitive(jobjReceived, "responseCode")->valueint;
+
+  printf("Server response code: %d\n", responseCode);
 
   switch (responseCode)
   {
@@ -527,7 +538,7 @@ void handle_server_response(cJSON *jobjReceived, int *userIdx)
     break;
   case RES_USER_VALID:
   {
-    char *userIdx = cJSON_GetObjectItemCaseSensitive(jobjReceived, "clientUserIndex")->valuestring;
+    *userIdx = cJSON_GetObjectItemCaseSensitive(jobjReceived, "clientUserIdx")->valueint;
     printf("Username legal. Connection established.");
     break;
   }

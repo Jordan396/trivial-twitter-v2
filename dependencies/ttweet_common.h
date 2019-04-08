@@ -87,4 +87,5 @@ void die_with_error(char *errorMessage);
 int persist_with_error(char *errorMessage);
 
 int send_payload(int sock, cJSON *jobjToSend);
-void receive_response(int sock, cJSON *jobjReceived);
+void receive_response(int sock, char *objReceived);
+void waitFor(unsigned int secs);

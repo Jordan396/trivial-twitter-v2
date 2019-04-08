@@ -30,38 +30,59 @@ int persist_with_error(char *errorMessage)
 
 int send_payload(int sock, cJSON *jobjToSend)
 {
-  int jobjToSendSize = sizeof(jobjToSend);
-  if (send(sock, &jobjToSendSize, sizeof(int), 0) != sizeof(int))
-    return persist_with_error("Block size: send() sent a different number of bytes than expected");
-  if (send(sock, jobjToSend, jobjToSendSize, 0) != jobjToSendSize)
-    return persist_with_error("Block contents: send() sent a different number of bytes than expected");
+  char buffer[RCV_BUF_SIZE];
+  char *request = cJSON_PrintUnformatted(jobjToSend);
+  int requestSize = strlen(request) + 1;
+
+  printf("JSON payload: %s\n", request);
+  printf("Size of request: %d\n", requestSize);
+
+  sprintf(buffer, "%d", requestSize);
+  if (send(sock, buffer, RCV_BUF_SIZE, 0) != RCV_BUF_SIZE)
+    return persist_with_error("Block size: send() sent a different number of bytes than expected.\n");
+  if (send(sock, request, requestSize, 0) != requestSize)
+    return persist_with_error("Block contents: send() sent a different number of bytes than expected.\n");
+  return 1;
 }
 
-void receive_response(int sock, cJSON *jobjReceived)
+void waitFor(unsigned int secs)
 {
-  int bytesToRecv;
+  unsigned int retTime = time(0) + secs; // Get finishing time.
+  while (time(0) < retTime)
+    ; // Loop until it arrives.
+}
+
+void receive_response(int sock, char *objReceived)
+{
+  int bytesToRecv = 0;
   int responseIdx = 0;
   char buffer[RCV_BUF_SIZE];   /* Buffer for ttweet string */
   char response[MAX_RESP_LEN]; /* Stores the entire response */
 
-  recv(sock, &bytesToRecv, sizeof(int), 0);
-  while (bytesToRecv > 0)
+  while (bytesToRecv <= 0)
   {
     recv(sock, buffer, RCV_BUF_SIZE, 0);
+    bytesToRecv = atoi(buffer);
+    waitFor(3);
+  }
+
+  while (bytesToRecv > 0)
+  {
     if (bytesToRecv > RCV_BUF_SIZE)
     {
-      strncpy(response + responseIdx, buffer, 32);
+      recv(sock, buffer, RCV_BUF_SIZE, 0);
+      strncpy(response + responseIdx, buffer, RCV_BUF_SIZE);
       responseIdx += RCV_BUF_SIZE;
     }
     else
     {
+      recv(sock, buffer, bytesToRecv, 0);
       strncpy(response + responseIdx, buffer, bytesToRecv);
       responseIdx += bytesToRecv;
-      response[responseIdx] = '\0';
     }
     bytesToRecv -= RCV_BUF_SIZE;
   }
-
-  jobjReceived = cJSON_Parse(response);
-  printf("JSON response: %s\n", cJSON_Print(jobjReceived));
+  printf("\nRaw response: %s\n", response);
+  strncpy(objReceived, response, sizeof(response));
 }
+

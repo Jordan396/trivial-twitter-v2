@@ -19,38 +19,15 @@
   * This header file has been created to describe the functions in ttweetcli.c.
   */
 
+
 #ifndef TTWEET_COMMON_H
 #define TTWEET_COMMON_H
-#include <ttweet_common.h>
+#include "../dependencies/ttweet_common.h"
 void die_with_error(char *errorMessage);
 int persist_with_error(char *errorMessage);
-int send_payload(int sock, cJSON *jobjPayload);
+int send_payload(int sock, cJSON *jobjToSend);
 void receive_response(int sock, cJSON *jobjReceived);
 #endif
-
-/**
- * @brief Handles connection errors
- *
- * Description Prints the error message, closes the connection
- * to the server and exits the program gracefully.
- *
- * @param errorMessage Error message to be printed.
- * @return void
- */
-void throwConnectionError(char *errorMessage);
-
-/**
- * @brief Handles input errors during connection
- *
- * Description Prints the error message and resets
- * ttweet variables. Connection to server persists.
- *
- * @param errorMessage Error message to be printed.
- * @param validHashtags Hashtags in a string array
- * @param numValidHashtags Number of hashtags in validHashtags
- * @return void
- */
-void RejectWithError(char *errorMessage, char *validHashtags[], int *numValidHashtags);
 
 /**
  * @brief Parses hashtags from user input
@@ -63,7 +40,20 @@ void RejectWithError(char *errorMessage, char *validHashtags[], int *numValidHas
  * @param inputHashtags Hashatag input from the user.
  * @return void
  */
-int parse_hashtags(char *validHashtags[], int *numValidHashtags, char *inputHashtags);
+int parse_hashtags(char *validHashtags[], int *numValidHashtags, char *inputHashtags);                                                                             /* Parses hashtags from user input */
+void save_current_hashtag(char *currentHashtagBuffer, int *currentHashtagBufferIdx, char *validHashtags[], int *numValidHashtags);                                 /* Save current hashtag buffer */
+void create_json_client_payload(cJSON *jobjToSend, int commandCode, char *username, int userIdx, char *ttweetString, char *validHashtags[], int numValidHashtags); /* Create a JSON client payload */
+void reset_client_variables(int *clientCommandSuccess, char *validHashtags[], int *numValidHashtags, cJSON *jobjToSend);                                           /* Resets client variables to prepare for the next command */
+void deallocate_string_array(char *stringArray[], int numStringsInArray);                                                                                          /* Deallocates memory from a dynamic string array */
+int has_duplicate_string(char *stringArray[], int numStringsInArray);                                                                                              /* Checks for duplicates in string array */
+int parse_client_command(char inputHashtags[], char ttweetString[]);
+int check_tweet_cmd(char clientInput[], int charIdx, char inputHashtags[], char ttweetString[]);
+int check_subscribe_cmd(char clientInput[], int charIdx, char inputHashtags[]);
+int check_unsubscribe_cmd(char clientInput[], int charIdx, char inputHashtags[]);
+int check_timeline_cmd(int endOfCmd);
+int check_exit_cmd(int endOfCmd);
+void create_json_client_payload(cJSON *jobjToSend, int commandCode, char *username, int userIdx, char *ttweetString, char *validHashtags[], int numValidHashtags);
+void handle_server_response(cJSON *jobjReceived, int *userIdx);
 
 /**
  * @brief Save current hashtag buffer
@@ -77,7 +67,6 @@ int parse_hashtags(char *validHashtags[], int *numValidHashtags, char *inputHash
  * @param numValidHashtags Number of hashtags in validHashtags
  * @return void
  */
-void save_current_hashtag(char *currentHashtagBuffer, int *currentHashtagBufferIndex, char *validHashtags[], int *numValidHashtags);
 
 /**
  * @brief Checks for duplicates in string array
@@ -88,7 +77,6 @@ void save_current_hashtag(char *currentHashtagBuffer, int *currentHashtagBufferI
  * @param numStringsInArray Number of strings in stringArray
  * @return int 1 if duplicates exist; 0 otherwise. 
  */
-int checkDuplicatesExists(char *stringArray[], int numStringsInArray);
 
 /**
  * @brief Converts user input to a ttweet JSON object
@@ -101,7 +89,6 @@ int checkDuplicatesExists(char *stringArray[], int numStringsInArray);
  * @param numValidHashtags Number of hashtags in validHashtags
  * @return void
  */
-void ttweet_to_json(cJSON *jobj, char *ttweetString, char *validHashtags[], int numValidHashtags);
 
 /**
  * @brief Deallocates memory from a dynamic string array
@@ -112,7 +99,6 @@ void ttweet_to_json(cJSON *jobj, char *ttweetString, char *validHashtags[], int 
  * @param numStringsInArray Number of elements to free in the array
  * @return void
  */
-void deallocate_string_array(char *stringArray[], int numStringsInArray);
 
 /**
  * @brief Resets client variables to prepare for the next command
@@ -125,4 +111,3 @@ void deallocate_string_array(char *stringArray[], int numStringsInArray);
  * @param jobj cJSON object to store ttweet
  * @return void
  */
-void reset_client_variables(int *clientCommandSuccess, char *validHashtags[], int *numValidHashtags, cJSON *jobjPayload);

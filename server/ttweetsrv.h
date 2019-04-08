@@ -21,7 +21,7 @@
 
 #ifndef TTWEET_COMMON_H
 #define TTWEET_COMMON_H
-#include <ttweet_common.h>
+#include "../dependencies/ttweet_common.h"
 void die_with_error(char *errorMessage);
 int persist_with_error(char *errorMessage);
 int send_payload(int sock, cJSON *jobjToSend);
@@ -62,5 +62,4 @@ typedef struct User
  *
  * @return void
  */
-void
-handle_ttweet_client(int clntSocket);
+void handle_ttweet_client(int clntSocket);

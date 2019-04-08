@@ -54,8 +54,8 @@
 #include <arpa/inet.h>  /* for sockaddr_in and inet_ntoa() */
 
 /* External libraries */
-#include <cJSON.h>
-#include <linked_lists_str.h>
+#include "./cJSON.h"
+#include "./linked_lists_str.h"
 
 /**
   * @file ttweet_common.h

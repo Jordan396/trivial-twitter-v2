@@ -12,7 +12,7 @@
   * @brief This file contains functions used in both client and server side for trivial-twitter-v2.
   */
 
-#include <ttweet_common.h>
+#include "ttweet_common.h"
 
 /** \copydoc die_with_error */
 void die_with_error(char *errorMessage)

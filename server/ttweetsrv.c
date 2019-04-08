@@ -24,11 +24,28 @@
   * If unauthorized, notify client of unauthorized request via unauthorizedRequestMessage.
   */
 
-#include <ttweetsrv.h>
+#include "ttweetsrv.h"
 
-void child_exit_signal_handler();          /* Function to clean up zombie child processes */
-void die_with_error(char *errorMessage);   /* Error handling function */
-void handle_ttweet_client(int clntSocket); /* TCP client handling function */
+void child_exit_signal_handler(); /* Function to clean up zombie child processes */
+int create_tcp_serv_socket(unsigned short port);
+int accept_tcp_connection(int servSock);
+void handle_ttweet_client(int clntSocket);
+int handle_client_response(int clntSocket, cJSON *jobjReceived, int *clientUserIdx);
+void handle_validate_user_request(cJSON *jobjToSend, char *senderUsername, int *clientUserIdx);
+void handle_tweet_request(cJSON *jobjToSend, cJSON *jobjReceived, char *senderUsername, int *clientUserIdx);
+void handle_subscribe_request(cJSON *jobjToSend, cJSON *jobjReceived, char *senderUsername, int *clientUserIdx);
+void handle_unsubscribe_request(cJSON *jobjToSend, cJSON *jobjReceived, char *senderUsername, int *clientUserIdx);
+void handle_timeline_request(cJSON *jobjToSend, int *clientUserIdx);
+int handle_exit_request(int *userIdx);
+int handle_invalid_request();
+void handle_tweet_updates();
+void add_tweet_to_user(User client, char *senderUsername, char *ttweetString, char *originHashtag);
+void waitFor(unsigned int secs);
+void initializeUserArray();
+void create_json_server_payload(cJSON *jobjToSend, int commandCode, int userIdx, char *detailedMessage);
+void add_pending_tweets_to_jobj(cJSON *jobj, ListNode *head);
+void reset_server_variables(cJSON *jobjToSend);
+void store_latest_tweet(cJSON *jobjReceived, char *senderUsername);
 
 /* Global variables */
 unsigned int childProcCount = 0; /* Number of child processes */
@@ -181,8 +198,8 @@ int handle_client_response(int clntSocket, cJSON *jobjReceived, int *clientUserI
   char *senderUsername;
   char *receiverUsername;
 
-  requestCode = cJSON_GetObjectItemCaseSensitive(jobjReceived, "requestCode");
-  senderUsername = cJSON_GetObjectItemCaseSensitive(jobjReceived, "username");
+  requestCode = cJSON_GetObjectItemCaseSensitive(jobjReceived, "requestCode")->valueint;
+  senderUsername = cJSON_GetObjectItemCaseSensitive(jobjReceived, "username")->valuestring;
 
   switch (requestCode)
   {
@@ -193,17 +210,17 @@ int handle_client_response(int clntSocket, cJSON *jobjReceived, int *clientUserI
     handle_tweet_request(jobjToSend, jobjReceived, senderUsername, clientUserIdx);
     break;
   case REQ_SUBSCRIBE:
-    handle_subscribe_request(jobjToSend, jobjReceived, senderUsername, &clientUserIdx);
+    handle_subscribe_request(jobjToSend, jobjReceived, senderUsername, clientUserIdx);
     break;
   case REQ_UNSUBSCRIBE:
-    handle_unsubscribe_request(jobjToSend, jobjReceived, senderUsername, &clientUserIdx);
+    handle_unsubscribe_request(jobjToSend, jobjReceived, senderUsername, clientUserIdx);
     break;
   case REQ_EXIT:
-    return handle_exit_request(&clientUserIdx);
+    return handle_exit_request(clientUserIdx);
     break;
   case REQ_INVALID:
   default:
-    return handle_invalid_request(&clientUserIdx);
+    return handle_invalid_request(clientUserIdx);
   }
 
   if (!send_payload(clntSocket, jobjToSend))
@@ -227,7 +244,7 @@ void handle_validate_user_request(cJSON *jobjToSend, char *senderUsername, int *
   {
     if (activeUsers[userIdx].isOccupied)
     {
-      if (strcmp(activeUsers[userIdx].username, *senderUsername) == 0)
+      if (strcmp(activeUsers[userIdx].username, senderUsername) == 0)
       { /* username already taken */
         create_json_server_payload(jobjToSend, RES_USER_INVALID, INVALID_USER_INDEX, "Username already taken.");
         isUserValid = 0;
@@ -268,8 +285,9 @@ void handle_subscribe_request(cJSON *jobjToSend, cJSON *jobjReceived, char *send
 {
   int isSubscriptionExists = 0;
   int isSubscriptionsFull = 1;
-  char *subscriptionHashtag = cJSON_GetObjectItemCaseSensitive(jobjReceived, "subscriptionHashtag");
+  char *subscriptionHashtag = cJSON_GetObjectItemCaseSensitive(jobjReceived, "subscriptionHashtag")->valuestring;
   char *existingSubscriptions = "";
+  char *detailedMessage;
 
   for (int subscriptionIdx = 0; subscriptionIdx < MAX_SUBSCRIPTIONS; subscriptionIdx++)
   {
@@ -290,7 +308,8 @@ void handle_subscribe_request(cJSON *jobjToSend, cJSON *jobjReceived, char *send
   }
   if (isSubscriptionsFull)
   {
-    create_json_server_payload(jobjToSend, RES_SUBSCRIBE, *clientUserIdx, sprintf("Subscription list full. Please unsubscribe to one of the following hashtags first:\n%s", existingSubscriptions));
+    sprintf(detailedMessage, "Subscription list full. Please unsubscribe to one of the following hashtags first:\n%s", existingSubscriptions);
+    create_json_server_payload(jobjToSend, RES_SUBSCRIBE, *clientUserIdx, detailedMessage);
   }
   else if (isSubscriptionExists)
   {
@@ -300,7 +319,7 @@ void handle_subscribe_request(cJSON *jobjToSend, cJSON *jobjReceived, char *send
 void handle_unsubscribe_request(cJSON *jobjToSend, cJSON *jobjReceived, char *senderUsername, int *clientUserIdx)
 {
   int isSubscriptionExists = 0;
-  char *subscriptionHashtag = cJSON_GetObjectItemCaseSensitive(jobjReceived, "subscriptionHashtag");
+  char *subscriptionHashtag = cJSON_GetObjectItemCaseSensitive(jobjReceived, "subscriptionHashtag")->valuestring;
 
   for (int subscriptionIdx = 0; subscriptionIdx < MAX_SUBSCRIPTIONS; subscriptionIdx++)
   {
@@ -331,7 +350,7 @@ int handle_exit_request(int *userIdx)
   activeUsers[*userIdx].isOccupied = 0;
   return 0;
 }
-void handle_invalid_request()
+int handle_invalid_request()
 {
   return 0;
 }
@@ -380,7 +399,7 @@ void handle_tweet_updates()
   }
 }
 
-void add_tweet_to_user(User client, char *senderUsername, char *ttweetString, char originHashtag)
+void add_tweet_to_user(User client, char *senderUsername, char *ttweetString, char *originHashtag)
 {
   char tweetItem[MAX_ITEM_LEN];
   strcpy(tweetItem, client.username);
@@ -391,7 +410,7 @@ void add_tweet_to_user(User client, char *senderUsername, char *ttweetString, ch
   strcat(tweetItem, " ");
   strcat(tweetItem, originHashtag);
 
-  insertNode(client.pendingTweets, client.pendingTweetsSize, tweetItem);
+  insertNode(&(client.pendingTweets), client.pendingTweetsSize, tweetItem);
 }
 
 void waitFor(unsigned int secs)
@@ -415,7 +434,7 @@ void create_json_server_payload(cJSON *jobjToSend, int commandCode, int userIdx,
   cJSON_AddItemToObject(jobjToSend, "responseCode", cJSON_CreateNumber(commandCode));               /*Add command to JSON object*/
   cJSON_AddItemToObject(jobjToSend, "username", cJSON_CreateString(activeUsers[userIdx].username)); /*Add username to JSON object*/
   cJSON_AddItemToObject(jobjToSend, "clientUserIdx", cJSON_CreateNumber(userIdx));                  /*Add user index to JSON object*/
-  cJSON_AddStringToObject(jobjToSend, "detailedMessage", cJSON_CreateString(detailedMessage));
+  cJSON_AddItemToObject(jobjToSend, "detailedMessage", cJSON_CreateString(detailedMessage));
 
   switch (commandCode)
   {
@@ -447,7 +466,7 @@ void add_pending_tweets_to_jobj(cJSON *jobj, ListNode *head)
   {
     while (current)
     { /* frees the linked list while traversing */
-      cJSON_AddItemToArray(jarray, current->item);
+      cJSON_AddItemToArray(jarray, cJSON_CreateString(current->item));
       nextNode = current->next;
       free(current);
       current = nextNode;
@@ -473,6 +492,6 @@ void store_latest_tweet(cJSON *jobjReceived, char *senderUsername)
   latestTweet.numValidHashtags = cJSON_GetArraySize(jarray);
   for (int i = 0; i < latestTweet.numValidHashtags; i++)
   {
-    strcpy(latestTweet.hashtags[i], cJSON_GetArrayItem(jarray, i));
+    strcpy(latestTweet.hashtags[i], cJSON_GetArrayItem(jarray, i)->valuestring);
   }
 }

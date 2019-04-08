@@ -80,7 +80,7 @@ int main(int argc, char *argv[])
   int userIdx = INVALID_USER_INDEX;
   printf("Arguments: %d\n", argc);
 
-  if (argc != 3) /* Test for correct number of arguments */
+  if (argc != 4) /* Test for correct number of arguments */
   {
     die_with_error("Command not recognized!\nUsage: $./ttweetcli <ServerIP> <ServerPort> <Username>");
   }

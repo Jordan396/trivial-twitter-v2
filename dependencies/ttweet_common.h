@@ -49,6 +49,7 @@
 #include <signal.h> /* for sigaction() */
 #include <ctype.h>  /* for char validation */
 #include <time.h>
+#include <sys/mman.h>
 #include <sys/socket.h> /* for socket(), bind(), and connect() */
 #include <sys/wait.h>   /* for waitpid() */
 #include <arpa/inet.h>  /* for sockaddr_in and inet_ntoa() */

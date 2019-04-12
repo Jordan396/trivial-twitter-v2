@@ -33,7 +33,7 @@ typedef struct LatestTweet
   int tweetID;
   char username[MAX_USERNAME_LEN];
   char ttweetString[MAX_TWEET_LEN + 1]; /* +1 is for null char if tweet is MAX_HASHTAG_LEN long */
-  char *hashtags[MAX_HASHTAG_LEN];
+  char hashtags[MAX_HASHTAG_CNT][MAX_HASHTAG_LEN];
   int numValidHashtags;
 } LatestTweet;
 

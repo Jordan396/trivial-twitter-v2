@@ -30,6 +30,7 @@ void child_exit_signal_handler(); /* Function to clean up zombie child processes
 int create_tcp_serv_socket(unsigned short port);
 int accept_tcp_connection(int servSock);
 void handle_ttweet_client(int clntSocket);
+void reject_ttweet_client(int clntSocket);
 int handle_client_response(int clntSocket, cJSON *jobjReceived, int *clientUserIdx);
 void handle_validate_user_request(cJSON *jobjToSend, char *senderUsername, int *clientUserIdx);
 void handle_tweet_request(cJSON *jobjToSend, cJSON *jobjReceived, char *senderUsername, int *clientUserIdx);
@@ -41,15 +42,17 @@ int handle_invalid_request();
 void handle_tweet_updates();
 void add_tweet_to_user(User client, char *senderUsername, char *ttweetString, char *originHashtag);
 void initializeUserArray();
+void initializeLatestTweet();
 void create_json_server_payload(cJSON *jobjToSend, int commandCode, int userIdx, char *detailedMessage);
 void add_pending_tweets_to_jobj(cJSON *jobj, ListNode *head);
 void store_latest_tweet(cJSON *jobjReceived, char *senderUsername);
 void print_active_users();
+void print_latest_tweet();
 
 /* Global variables */
-unsigned int childProcCount = 0; /* Number of child processes */
-LatestTweet latestTweet;
-User activeUsers[MAX_CONC_CONN]; /* Keeps track of active users */
+unsigned int childProcCount; /* Number of child processes */
+LatestTweet *latestTweet;
+User *activeUsers;
 
 int main(int argc, char *argv[])
 {
@@ -67,9 +70,6 @@ int main(int argc, char *argv[])
   ttweetServPort = atoi(argv[1]); /* First arg:  local port */
   servSock = create_tcp_serv_socket(ttweetServPort);
 
-  /* Initialize activeUsers array */
-  initializeUserArray();
-
   /* Set child_exit_signal_handler() as handler function */
   signalHandler.sa_handler = child_exit_signal_handler;
   if (sigfillset(&signalHandler.sa_mask) < 0) /* mask all signals */
@@ -81,34 +81,38 @@ int main(int argc, char *argv[])
   if (sigaction(SIGCHLD, &signalHandler, 0) < 0)
     die_with_error("sigaction() failed");
 
-  /* Spawn a dedicated child process to check for latest tweets */
-  if ((processID = fork()) < 0)
-    die_with_error("fork() failed");
-  else if (processID == 0) /* If this is the child process */
-  {
-    handle_tweet_updates();
-    exit(0); /* Child process done */
-  }
+  childProcCount = 0;
+  latestTweet = mmap(NULL, sizeof(LatestTweet), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+  activeUsers = mmap(NULL, sizeof(User) * MAX_CONC_CONN, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+
+  /* Initialize activeUsers array */
+  initializeUserArray();
+  initializeLatestTweet();
 
   while (1) /* run forever */
   {
-    if (childProcCount < MAX_CONC_CONN)
-    { /* Server supports up to MAX_CONC_CONN connections */
-      clntSock = accept_tcp_connection(servSock);
-      /* Fork child process and report any errors */
-      if ((processID = fork()) < 0)
-        die_with_error("fork() failed");
-      else if (processID == 0) /* If this is the child process */
+    clntSock = accept_tcp_connection(servSock);
+    /* Fork child process and report any errors */
+    if ((processID = fork()) < 0)
+      die_with_error("fork() failed");
+    else if (processID == 0) /* If this is the child process */
+    {
+      close(servSock); /* Child closes parent socket file descriptor */
+      if (childProcCount < MAX_CONC_CONN)
       {
-        close(servSock); /* Child closes parent socket file descriptor */
         handle_ttweet_client(clntSock);
-        exit(0); /* Child process done */
+      }
+      else
+      {
+        reject_ttweet_client(clntSock);
       }
 
-      printf("with child process: %d\n", (int)processID);
-      close(clntSock);  /* Parent closes child socket descriptor */
-      childProcCount++; /* Increment number of outstanding child processes */
+      exit(0); /* Child process done */
     }
+
+    printf("with child process: %d\n", (int)processID);
+    close(clntSock);  /* Parent closes child socket descriptor */
+    childProcCount++; /* Increment number of outstanding child processes */
   }
 }
 
@@ -197,6 +201,24 @@ void handle_ttweet_client(int clntSocket)
   close(clntSocket); /* Close client socket */
 }
 
+void reject_ttweet_client(int clntSocket)
+{
+  char objReceived[MAX_RESP_LEN];
+  int clientUserIdx = INVALID_USER_INDEX;
+
+  printf("Active Users:\n");
+  print_active_users();
+  cJSON *jobjReceived = cJSON_CreateObject();
+  receive_response(clntSocket, objReceived);
+  printf("objReceived outside: %s\n", objReceived);
+  jobjReceived = cJSON_Parse(objReceived);
+  printf("JSON request: %s\n", cJSON_Print(jobjReceived));
+  handle_client_response(clntSocket, jobjReceived, &clientUserIdx);
+  cJSON_Delete(jobjReceived);
+
+  close(clntSocket); /* Close client socket */
+}
+
 int handle_client_response(int clntSocket, cJSON *jobjReceived, int *clientUserIdx)
 {
   int requestCode;
@@ -226,6 +248,9 @@ int handle_client_response(int clntSocket, cJSON *jobjReceived, int *clientUserI
     break;
   case REQ_UNSUBSCRIBE:
     handle_unsubscribe_request(jobjToSend, jobjReceived, senderUsername, clientUserIdx);
+    break;
+  case REQ_TIMELINE:
+    handle_timeline_request(jobjToSend, clientUserIdx);
     break;
   case REQ_EXIT:
     return handle_exit_request(clientUserIdx);
@@ -282,6 +307,7 @@ void handle_validate_user_request(cJSON *jobjToSend, char *senderUsername, int *
       {
         activeUsers[userIdx].isOccupied = 1; /* mark index as occupied */
         strcpy(activeUsers[userIdx].username, senderUsername);
+        *clientUserIdx = userIdx;
         create_json_server_payload(jobjToSend, RES_USER_VALID, userIdx, "Username is valid.");
         break;
       }
@@ -296,21 +322,30 @@ void handle_validate_user_request(cJSON *jobjToSend, char *senderUsername, int *
 void handle_tweet_request(cJSON *jobjToSend, cJSON *jobjReceived, char *senderUsername, int *clientUserIdx)
 {
   store_latest_tweet(jobjReceived, senderUsername);
-  create_json_server_payload(jobjToSend, RES_TWEET, *clientUserIdx, "");
+  print_latest_tweet();
+  handle_tweet_updates();
+  create_json_server_payload(jobjToSend, RES_TWEET, *clientUserIdx, "Tweet successful!");
 }
 
 void handle_subscribe_request(cJSON *jobjToSend, cJSON *jobjReceived, char *senderUsername, int *clientUserIdx)
 {
+  printf("Start of handle_subscribe_request().\n");
+
   int isSubscriptionExists = 0;
   int isSubscriptionsFull = 1;
   char *subscriptionHashtag = cJSON_GetObjectItemCaseSensitive(jobjReceived, "subscriptionHashtag")->valuestring;
   char *existingSubscriptions = "";
   char *detailedMessage;
 
+  printf("Checkpoint 1 of handle_subscribe_request().\n");
+  printf("Client user index: %d\n", *clientUserIdx);
+
   for (int subscriptionIdx = 0; subscriptionIdx < MAX_SUBSCRIPTIONS; subscriptionIdx++)
   {
-    if (activeUsers[*clientUserIdx].subscriptions[subscriptionIdx])
-    {                                                                                            /* subscription exists in this position of the user's subscriptions array */
+    printf("Loop number: %d\n", subscriptionIdx);
+    if (strcmp(activeUsers[*clientUserIdx].subscriptions[subscriptionIdx], "") != 0)
+    { /* subscription exists in this position of the user's subscriptions array */
+      printf("Inside inner loop!\n");
       strcat(existingSubscriptions, activeUsers[*clientUserIdx].subscriptions[subscriptionIdx]); /* collect existing subscriptions */
       strcat(existingSubscriptions, "\n");
 
@@ -324,6 +359,9 @@ void handle_subscribe_request(cJSON *jobjToSend, cJSON *jobjReceived, char *send
       isSubscriptionsFull = 0;
     }
   }
+  printf("Checkpoint 2 of handle_subscribe_request().\n");
+  printf("Existing subscriptions: %s\n", existingSubscriptions);
+
   if (isSubscriptionsFull)
   {
     sprintf(detailedMessage, "Subscription list full. Please unsubscribe to one of the following hashtags first:\n%s", existingSubscriptions);
@@ -333,7 +371,22 @@ void handle_subscribe_request(cJSON *jobjToSend, cJSON *jobjReceived, char *send
   {
     create_json_server_payload(jobjToSend, RES_SUBSCRIBE, *clientUserIdx, "Subscription already exists.\n");
   }
+  else
+  {
+    for (int subscriptionIdx = 0; subscriptionIdx < MAX_SUBSCRIPTIONS; subscriptionIdx++)
+    {
+      printf("Loop number: %d\n", subscriptionIdx);
+      if (strcmp(activeUsers[*clientUserIdx].subscriptions[subscriptionIdx], "") == 0)
+      { /* found an empty slot for subscription */
+        strcpy(activeUsers[*clientUserIdx].subscriptions[subscriptionIdx], subscriptionHashtag);
+        break;
+      }
+    }
+    create_json_server_payload(jobjToSend, RES_SUBSCRIBE, *clientUserIdx, "Subscribed to hashtag successfully.\n");
+    printf("End of handle_subscribe_request.\n");
+  }
 }
+
 void handle_unsubscribe_request(cJSON *jobjToSend, cJSON *jobjReceived, char *senderUsername, int *clientUserIdx)
 {
   int isSubscriptionExists = 0;
@@ -341,12 +394,12 @@ void handle_unsubscribe_request(cJSON *jobjToSend, cJSON *jobjReceived, char *se
 
   for (int subscriptionIdx = 0; subscriptionIdx < MAX_SUBSCRIPTIONS; subscriptionIdx++)
   {
-    if (activeUsers[*clientUserIdx].subscriptions[subscriptionIdx])
+    if (strcmp(activeUsers[*clientUserIdx].subscriptions[subscriptionIdx], "") != 0)
     { /* subscription exists in this position of the user's subscriptions array */
       if (strcmp(activeUsers[*clientUserIdx].subscriptions[subscriptionIdx], subscriptionHashtag) == 0)
       { /* subscription hashtag already exists */
         isSubscriptionExists = 1;
-        free(activeUsers[*clientUserIdx].subscriptions[subscriptionIdx]);
+        strcpy(activeUsers[*clientUserIdx].subscriptions[subscriptionIdx], "");
         break;
       }
     }
@@ -354,6 +407,10 @@ void handle_unsubscribe_request(cJSON *jobjToSend, cJSON *jobjReceived, char *se
   if (isSubscriptionExists)
   {
     create_json_server_payload(jobjToSend, RES_UNSUBSCRIBE, *clientUserIdx, "Successfully unsubscribed.");
+  }
+  else
+  {
+    create_json_server_payload(jobjToSend, RES_UNSUBSCRIBE, *clientUserIdx, "You were not subscribed to that hashtag.");
   }
 }
 
@@ -376,40 +433,29 @@ int handle_invalid_request()
 
 void handle_tweet_updates()
 {
-  int lastCheckedTweetID = 0;
-  int matchFound;
-  while (1)
+  for (int userIdx = 0; userIdx < MAX_CONC_CONN; userIdx++)
   {
-    if (lastCheckedTweetID != latestTweet.tweetID)
-    {
-      waitFor(2); /* Ensure all latestTweet fields have been updated */
-      for (int userIdx = 0; userIdx < MAX_CONC_CONN; userIdx++)
-      {
-        if (!activeUsers[userIdx].isOccupied)
-        { /* if User array element is not occupied, there's no need to check it */
-          continue;
-        }
-        if (activeUsers[userIdx].isSubscribedAll)
-        { /* User is subscribed to ALL - simply add tweet and take first hashtag */
-          add_tweet_to_user(activeUsers[userIdx], latestTweet.username, latestTweet.ttweetString, latestTweet.hashtags[0]);
-          continue;
-        }
-        else
-        { /* User is not subscribed to ALL - check if any subscriptions and hashtags match */
-          matchFound = 0;
-          for (int subscriptionIdx = 0; subscriptionIdx < MAX_SUBSCRIPTIONS; subscriptionIdx++)
-          { /* Iterate over current user's subscriptions */
-            for (int hashtagIdx = 0; hashtagIdx < latestTweet.numValidHashtags; hashtagIdx++)
-            { /* Iterate over lastest tweet's hashtags */
-              if (strcmp(activeUsers[userIdx].subscriptions[subscriptionIdx], latestTweet.hashtags[hashtagIdx]) == 0)
-              { /* user is subscribed to hashtag */
-                matchFound = 1;
-                add_tweet_to_user(activeUsers[userIdx], latestTweet.username, latestTweet.ttweetString, latestTweet.hashtags[hashtagIdx]);
-              }
-              if (matchFound)
-              {
-                break;
-              }
+
+    if (activeUsers[userIdx].isOccupied)
+    { /* if User array element is not occupied, there's no need to check it */
+      if (activeUsers[userIdx].isSubscribedAll)
+      { /* User is subscribed to ALL - simply add tweet and take first hashtag */
+        printf("User subscribed to ALL. Adding tweet to %s...\n", activeUsers[userIdx].username);
+        add_tweet_to_user(activeUsers[userIdx], latestTweet->username, latestTweet->ttweetString, latestTweet->hashtags[0]);
+      }
+      else
+      { /* User is not subscribed to ALL - check if any subscriptions and hashtags match */
+        for (int subscriptionIdx = 0; subscriptionIdx < MAX_SUBSCRIPTIONS; subscriptionIdx++)
+        { /* Iterate over current user's subscriptions */
+          for (int hashtagIdx = 0; hashtagIdx < latestTweet->numValidHashtags; hashtagIdx++)
+          { /* Iterate over lastest tweet's hashtags */
+            if (strcmp(activeUsers[userIdx].subscriptions[subscriptionIdx], latestTweet->hashtags[hashtagIdx]) == 0)
+            { /* user is subscribed to hashtag */
+
+              printf("User subscribed to hashtag. Adding tweet to %s...\n", activeUsers[userIdx].username);
+              add_tweet_to_user(activeUsers[userIdx], latestTweet->username, latestTweet->ttweetString, latestTweet->hashtags[hashtagIdx]);
+              subscriptionIdx = MAX_SUBSCRIPTIONS + 1;
+              hashtagIdx = MAX_HASHTAG_CNT + 1;
             }
           }
         }
@@ -420,7 +466,10 @@ void handle_tweet_updates()
 
 void add_tweet_to_user(User client, char *senderUsername, char *ttweetString, char *originHashtag)
 {
+  ListNode *head, *cur = NULL;
   char tweetItem[MAX_ITEM_LEN];
+  head = client.pendingTweets;
+
   strcpy(tweetItem, client.username);
   strcat(tweetItem, " ");
   strcat(tweetItem, senderUsername);
@@ -428,15 +477,54 @@ void add_tweet_to_user(User client, char *senderUsername, char *ttweetString, ch
   strcat(tweetItem, ttweetString);
   strcat(tweetItem, " ");
   strcat(tweetItem, originHashtag);
+  printf("Tweet item: %s\n", tweetItem);
 
-  insertNode(&(client.pendingTweets), client.pendingTweetsSize, tweetItem);
+  if (head == NULL)
+  {
+    printf("Creating new pointer head...\n");
+    head = malloc(sizeof(ListNode));
+    strcpy(head->item, tweetItem);
+    head->next = NULL;
+  }
+  else
+  {
+    cur = head;
+    while (cur->next != NULL)
+    {
+      cur = cur->next;
+    }
+    printf("Creating new pointer next...\n");
+    cur->next = malloc(sizeof(ListNode));
+    cur = cur->next;
+    strcpy(cur->item, tweetItem);
+    cur->next = NULL;
+  }
 }
 
 void initializeUserArray()
 {
   for (int i = 0; i < MAX_CONC_CONN; i++)
   {
-    activeUsers[i].isOccupied = 0;
+    (activeUsers + i)->isOccupied = 0;
+    (activeUsers + i)->pendingTweetsSize = 0;
+    (activeUsers + i)->isSubscribedAll = 0;
+    (activeUsers + i)->pendingTweets = NULL;
+    for (int j = 0; j < MAX_SUBSCRIPTIONS; j++)
+    {
+      strcpy((activeUsers + i)->subscriptions[j], "");
+    }
+  }
+}
+
+void initializeLatestTweet()
+{
+  latestTweet->tweetID = 0;
+  strcpy(latestTweet->username, "");
+  strcpy(latestTweet->ttweetString, "");
+  latestTweet->numValidHashtags = 0;
+  for (int hashtagIdx = 0; hashtagIdx < MAX_HASHTAG_CNT; hashtagIdx++)
+  {
+    strcpy(latestTweet->hashtags[hashtagIdx], "");
   }
 }
 
@@ -493,14 +581,26 @@ void add_pending_tweets_to_jobj(cJSON *jobj, ListNode *head)
 }
 void store_latest_tweet(cJSON *jobjReceived, char *senderUsername)
 {
-  (latestTweet.tweetID)++;
-  strcpy(latestTweet.username, senderUsername);
+  (latestTweet->tweetID)++;
+  printf("store_latest_tweet(): Checkpoint 1!\n");
+  strcpy(latestTweet->username, senderUsername);
+  strcpy(latestTweet->ttweetString, cJSON_GetObjectItemCaseSensitive(jobjReceived, "ttweetString")->valuestring);
+  printf("store_latest_tweet(): Checkpoint 2!\n");
   cJSON *jarray = cJSON_GetObjectItemCaseSensitive(jobjReceived, "ttweetHashtags");
-  latestTweet.numValidHashtags = cJSON_GetArraySize(jarray);
-  for (int i = 0; i < latestTweet.numValidHashtags; i++)
+  printf("store_latest_tweet(): Checkpoint 3!\n");
+  latestTweet->numValidHashtags = cJSON_GetArraySize(jarray);
+  printf("store_latest_tweet(): Checkpoint 4!\n");
+  for (int i = 0; i < MAX_HASHTAG_CNT; i++)
   {
-    strcpy(latestTweet.hashtags[i], cJSON_GetArrayItem(jarray, i)->valuestring);
+    strcpy((latestTweet->hashtags)[i], "");
   }
+  for (int i = 0; i < latestTweet->numValidHashtags; i++)
+  {
+    printf("store_latest_tweet(): Checkpoint a!\n");
+    strcpy(latestTweet->hashtags[i], cJSON_GetArrayItem(jarray, i)->valuestring);
+    printf("store_latest_tweet(): Checkpoint b!\n");
+  }
+  printf("Latest tweet stored successfully!\n");
 }
 
 void print_active_users()
@@ -511,9 +611,27 @@ void print_active_users()
     printf("isOccupied: %d\n", activeUsers[userIdx].isOccupied);
     printf("username: %s\n", activeUsers[userIdx].username);
     printf("isSubscribedAll: %d\n", activeUsers[userIdx].isSubscribedAll);
-    // printf("isOccupied: %d\n", activeUsers[userIdx].pendingTweets);
+    for (int subscriptionIdx = 0; subscriptionIdx < MAX_SUBSCRIPTIONS; subscriptionIdx++)
+    {
+      printf("%s", activeUsers[userIdx].subscriptions[subscriptionIdx]);
+    }
+    printf("\nPending Tweets:\n");
+    printList(activeUsers[userIdx].pendingTweets);
+
     // printf("isOccupied: %d\n", activeUsers[userIdx].pendingTweetsSize);
     // printf("isOccupied: %d\n", activeUsers[userIdx].subscriptions);
+  }
+}
 
+void print_latest_tweet()
+{
+  printf("Latest Tweet:\n");
+  printf("Tweet ID: %d\n", latestTweet->tweetID);
+  printf("Username: %s\n", latestTweet->username);
+  printf("ttweetString: %s\n", latestTweet->ttweetString);
+  printf("Hashtags:\n");
+  for (int hashtagIdx = 0; hashtagIdx < MAX_HASHTAG_CNT; hashtagIdx++)
+  {
+    printf("%s\n", latestTweet->hashtags[hashtagIdx]);
   }
 }

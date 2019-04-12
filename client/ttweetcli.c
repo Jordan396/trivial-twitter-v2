@@ -53,6 +53,7 @@ int check_timeline_cmd(int endOfCmd);
 int check_exit_cmd(int endOfCmd);
 void create_json_client_payload(cJSON *jobjToSend, int commandCode, char *username, int userIdx, char *ttweetString, char *validHashtags[], int numValidHashtags);
 void handle_server_response(cJSON *jobjReceived, int *userIdx);
+void get_client_input(char *clientInput);
 
 int main(int argc, char *argv[])
 {
@@ -194,6 +195,8 @@ int parse_hashtags(char *validHashtags[], int *numValidHashtags, char *inputHash
 
   lenInputHashtags = strlen(inputHashtags); /* Assign length of input hashtags */
 
+  printf("Input hashtags: %s\n", inputHashtags);
+
   if (inputHashtags[0] != '#')
   { /* Hashtag must begin with # */
     return persist_with_error("Invalid hashtag(s)! Hashtag(s) must begin with #.");
@@ -331,7 +334,7 @@ int parse_client_command(char inputHashtags[], char ttweetString[])
                         4. timeline\n\
                         5. exit\n";
 
-  scanf("%s", clientInput);
+  get_client_input(clientInput);
 
   while (clientInput[charIdx] != ' ')
   {
@@ -344,12 +347,14 @@ int parse_client_command(char inputHashtags[], char ttweetString[])
     { /* None of the valid commands exceed 19 chars */
       return persist_with_error(unknownCmdMsg);
     }
-    clientCommand[charIdx] = clientInput[charIdx];
+    strncpy(clientCommand + charIdx, clientInput + charIdx, sizeof(char));
     charIdx++;
   }
 
   clientCommand[charIdx] = '\0';
   charIdx++;
+
+  printf("Client input: %s\n", clientInput);
 
   if (strcmp(clientCommand, "tweet") == 0)
   {
@@ -396,11 +401,12 @@ int check_tweet_cmd(char clientInput[], int charIdx, char inputHashtags[], char 
       sprintf(errorMessage, "tweet message cannot exceed %d chars. Please try again.", MAX_TWEET_LEN);
       return persist_with_error(errorMessage);
     }
-    ttweetString[ttweetStringIdx] = clientInput[charIdx];
+    strncpy(ttweetString + ttweetStringIdx, clientInput + charIdx, sizeof(char));
     charIdx++;
     ttweetStringIdx++;
   }
   charIdx++;
+  ttweetString[ttweetStringIdx] = '\0';
   if (clientInput[charIdx] != ' ')
   {
     return persist_with_error(invalidTweetCmdMsg);
@@ -416,10 +422,12 @@ int check_tweet_cmd(char clientInput[], int charIdx, char inputHashtags[], char 
     {
       return persist_with_error("Invalid hashtag(s)! Hashtag cannot exceed 25 chars.");
     }
-    inputHashtags[inputHashtagsIdx] = clientInput[charIdx];
+    strncpy(inputHashtags + inputHashtagsIdx, clientInput + charIdx, sizeof(char));
+
     charIdx++;
     inputHashtagsIdx++;
   }
+  inputHashtags[inputHashtagsIdx] = '\0';
 
   return REQ_TWEET;
 }
@@ -429,9 +437,11 @@ int check_subscribe_cmd(char clientInput[], int charIdx, char inputHashtags[])
   int inputHashtagsIdx = 0;
   char *invalidSubscribeCmdMsg = "subscribe command not formatted correctly. Please try again.";
 
+  printf("Client input: %s\n", clientInput);
+
   while (clientInput[charIdx] != '\0')
   {
-    if (clientInput[charIdx] != ' ')
+    if (clientInput[charIdx] == ' ')
     {
       return persist_with_error(invalidSubscribeCmdMsg);
     }
@@ -439,10 +449,12 @@ int check_subscribe_cmd(char clientInput[], int charIdx, char inputHashtags[])
     {
       return persist_with_error("Invalid hashtag(s)! Hashtag cannot exceed 25 chars.");
     }
-    inputHashtags[inputHashtagsIdx] = clientInput[charIdx];
+    strncpy(inputHashtags + inputHashtagsIdx, clientInput + charIdx, sizeof(char));
+
     charIdx++;
     inputHashtagsIdx++;
   }
+  inputHashtags[inputHashtagsIdx] = '\0';
   return REQ_SUBSCRIBE;
 }
 
@@ -534,7 +546,7 @@ void handle_server_response(cJSON *jobjReceived, int *userIdx)
   switch (responseCode)
   {
   case RES_USER_INVALID:
-    die_with_error("Username already taken. Please try again with a different username.");
+    die_with_error(cJSON_GetObjectItemCaseSensitive(jobjReceived, "detailedMessage")->valuestring);
     break;
   case RES_USER_VALID:
   {
@@ -547,8 +559,7 @@ void handle_server_response(cJSON *jobjReceived, int *userIdx)
   case RES_UNSUBSCRIBE:
   case RES_TWEET:
   {
-    char *detailedMessage = cJSON_GetObjectItemCaseSensitive(jobjReceived, "detailedMessage")->valuestring;
-    printf("Server response: %s", detailedMessage);
+    printf("Server response: %s", cJSON_GetObjectItemCaseSensitive(jobjReceived, "detailedMessage")->valuestring);
     break;
   }
 
@@ -567,4 +578,17 @@ void handle_server_response(cJSON *jobjReceived, int *userIdx)
     break;
   }
   printf("\n");
+}
+
+void get_client_input(char *clientInput)
+{
+  int i = 0;
+  while (1)
+  {
+    scanf("%c", &clientInput[i]);
+    if (clientInput[i] == '\n')
+      break;
+    i++;
+  }
+  clientInput[i] = '\0';
 }

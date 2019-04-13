@@ -41,7 +41,7 @@ typedef struct User
 {
   int isOccupied;
   char username[MAX_USERNAME_LEN];
-  ListNode *pendingTweets;
+  char pendingTweets[MAX_TWEET_QUEUE][MAX_TWEET_ITEM_LEN];
   int pendingTweetsSize;
   char subscriptions[MAX_SUBSCRIPTIONS][MAX_HASHTAG_LEN];
   int isSubscribedAll;

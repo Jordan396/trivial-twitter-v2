@@ -17,6 +17,9 @@
 #define MAX_HASHTAG_LEN 25
 #define RCV_BUF_SIZE 32   /* Size of receive buffer */
 #define MAX_RESP_LEN 5000 /* Maximum number of characters in response */
+#define MAX_TWEET_QUEUE 15
+#define MAX_TWEET_ITEM_LEN 250
+#define MAX_CLI_INPUT_LEN 300
 
 /* Request codes */
 #define REQ_INVALID 0
@@ -56,7 +59,6 @@
 
 /* External libraries */
 #include "./cJSON.h"
-#include "./linked_lists_str.h"
 
 /**
   * @file ttweet_common.h

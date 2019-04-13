@@ -34,9 +34,6 @@ int send_payload(int sock, cJSON *jobjToSend)
   char *request = cJSON_PrintUnformatted(jobjToSend);
   int requestSize = strlen(request) + 1;
 
-  printf("JSON payload: %s\n", request);
-  printf("Size of request: %d\n", requestSize);
-
   sprintf(buffer, "%d", requestSize);
   if (send(sock, buffer, RCV_BUF_SIZE, 0) != RCV_BUF_SIZE)
     return persist_with_error("Block size: send() sent a different number of bytes than expected.\n");
@@ -82,7 +79,6 @@ void receive_response(int sock, char *objReceived)
     }
     bytesToRecv -= RCV_BUF_SIZE;
   }
-  printf("\nRaw response: %s\n", response);
   strncpy(objReceived, response, sizeof(response));
 }
 

@@ -11,50 +11,82 @@
  ****************************************************************************/
 
 /**
-  * @file ttweetser.c
+  * @file ttweetsrv.c
   * @author Jordan396
-  * @date 14 February 2019
+  * @date 13 April 2019
   * @brief ttweetser handles upload/download requests from ttweetcli clients.
   *
-  * This file is to be compiled and executed on the server side.
-  * ttweetser runs continuously to listen for client requests. When a client
-  * sends a request, ttweetser checks if request is unauthorized or authorized.
-  * If authorized, check if request is to upload or download. If download, send ttweetString
-  * to the client. If upload, receive message from the client and store in ttweetString.
-  * If unauthorized, notify client of unauthorized request via unauthorizedRequestMessage.
+  * This file is to be compiled and executed on the server side. For an overview of 
+  * what this program does, visit <https://github.com/Jordan396/trivial-twitter-v2>.
+  * 
+  * Code is documented according to GNOME and Doxygen standards.
+  * <https://developer.gnome.org/programming-guidelines/stable/c-coding-style.html.en>
+  * <http://www.doxygen.nl/manual/docblocks.html>
+  * 
+  * ttweetsrc creates a persistent connection to a ttweetcli client. 
+  * A new child process is created for each connection via fork().
+  * The parent process ensures that only a maximum of MAX_CONC_CONN
+  * connections are running concurrently at any time.
+  * 
+  * Once a connection has been established, the client can run the following commands:
+  * 1. tweet​ "<150 char max tweet>" <Hashtag>
+  *   - Upload tweet to server.
+  * 2. subscribe​ <Hashtag>
+  *   - Subscribe to a hashtag (max of 3).
+  * 3. unsubscribe​ <Hashtag>
+  *   - Unsubscribes to a hashtag.
+  * 4. timeline
+  *   - Output all tweets that have been sent to it by the server since the last time the user has run the ​‘timeline’​ command.
+  * 5. exit
+  *   - Clean up any necessary state and close the client.
   */
 
 #include "ttweetsrv.h"
 
-void child_exit_signal_handler(); /* Function to clean up zombie child processes */
-int create_tcp_serv_socket(unsigned short port);
-int accept_tcp_connection(int servSock);
-void handle_ttweet_client(int clntSocket);
-void reject_ttweet_client(int clntSocket);
-int handle_client_response(int clntSocket, cJSON *jobjReceived, int *clientUserIdx);
-void handle_validate_user_request(cJSON *jobjToSend, char *senderUsername, int *clientUserIdx);
-void handle_tweet_request(cJSON *jobjToSend, cJSON *jobjReceived, char *senderUsername, int *clientUserIdx);
-void handle_subscribe_request(cJSON *jobjToSend, cJSON *jobjReceived, char *senderUsername, int *clientUserIdx);
-void handle_unsubscribe_request(cJSON *jobjToSend, cJSON *jobjReceived, char *senderUsername, int *clientUserIdx);
-void handle_timeline_request(cJSON *jobjToSend, int *clientUserIdx);
-int handle_exit_request(int *userIdx);
-int handle_invalid_request();
-void handle_tweet_updates();
-void add_tweet_to_user(int userIdx, char *senderUsername, char *ttweetString, char *originHashtag);
-void initialize_user_array();
-void initialize_latest_tweet();
-void create_json_server_payload(cJSON *jobjToSend, int commandCode, int userIdx, char *detailedMessage);
-void add_pending_tweets_to_jobj(cJSON *jobj, int userIdx);
-void store_latest_tweet(cJSON *jobjReceived, char *senderUsername);
-void print_active_users();
-void print_latest_tweet();
-void print_pending_tweets(int userIdx);
-void clear_user_at_index(int *userIdx);
+/* Function prototypes */
+
+/* functions to handle child processes */
+void child_exit_signal_handler(); /* Clean up zombie child processes */
+
+/* functions to handle connections */
+int create_tcp_serv_socket(unsigned short port); /* Creates TCP server socket */
+int accept_tcp_connection(int servSock);         /* Accepts and maintains a TCP connection */
+void handle_ttweet_client(int clntSocket);       /* Handles connection with client */
+void reject_ttweet_client(int clntSocket);       /* Sends a rejection message and closes connection */
+
+/* functions to initialize global variables */
+void initialize_user_array();   /* Initialize activeUser array */
+void initialize_latest_tweet(); /* Initialize latest tweet */
+
+/* functions to support transmission of data */
+void create_json_server_payload(cJSON *jobjToSend, int commandCode, int userIdx, char *detailedMessage); /* Creates a JSON payload to be send to client */
+
+/* functions to handle client commands */
+int handle_client_response(int clntSocket, cJSON *jobjReceived, int *clientUserIdx);                               /* Handles client response */
+void handle_validate_user_request(cJSON *jobjToSend, char *senderUsername, int *clientUserIdx);                    /* Handles validate user request */
+void handle_tweet_request(cJSON *jobjToSend, cJSON *jobjReceived, char *senderUsername, int *clientUserIdx);       /* Handles tweet request */
+void handle_subscribe_request(cJSON *jobjToSend, cJSON *jobjReceived, char *senderUsername, int *clientUserIdx);   /* Handles subscribe request */
+void handle_unsubscribe_request(cJSON *jobjToSend, cJSON *jobjReceived, char *senderUsername, int *clientUserIdx); /* Handles unsubscribe request */
+void handle_timeline_request(cJSON *jobjToSend, int *clientUserIdx);                                               /* Handles timeline request */
+int handle_exit_request(int *userIdx);                                                                             /* Handles exit request */
+int handle_invalid_request();                                                                                      /* Handles invalid request */
+
+/* functions to support above handling functions */
+void handle_tweet_updates();                                                                        /* Updates tweets across all clients */
+void add_tweet_to_user(int userIdx, char *senderUsername, char *ttweetString, char *originHashtag); /* Adds a tweet to a user */
+void add_pending_tweets_to_jobj(cJSON *jobj, int userIdx);                                          /* Adds pending tweets to JSON obj */
+void store_latest_tweet(cJSON *jobjReceived, char *senderUsername);                                 /* Stores to last received tweet */
+void clear_user_at_index(int *userIdx);                                                             /* Clears user space at specified index */
+
+/* functions for debugging */
+void print_active_users();              /* Print activeUsers */
+void print_latest_tweet();              /* Print latest tweet */
+void print_pending_tweets(int userIdx); /* Print pending tweets for a specified user */
 
 /* Global variables */
 unsigned int childProcCount; /* Number of child processes */
-LatestTweet *latestTweet;
-User *activeUsers;
+LatestTweet *latestTweet;    /* Latest tweet */
+User *activeUsers;           /* Tracks all active users */
 
 int main(int argc, char *argv[])
 {
@@ -83,11 +115,14 @@ int main(int argc, char *argv[])
   if (sigaction(SIGCHLD, &signalHandler, 0) < 0)
     die_with_error("sigaction() failed");
 
+  /* Initialize child process counter */
   childProcCount = 0;
+
+  /* Create shared memory space for global variables across all processes */
   latestTweet = mmap(NULL, sizeof(LatestTweet), PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
   activeUsers = mmap(NULL, sizeof(User) * MAX_CONC_CONN, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS, -1, 0);
 
-  /* Initialize activeUsers array */
+  /* Initialize global variables */
   initialize_user_array();
   initialize_latest_tweet();
 
@@ -101,11 +136,11 @@ int main(int argc, char *argv[])
     {
       close(servSock); /* Child closes parent socket file descriptor */
       if (childProcCount < MAX_CONC_CONN)
-      {
+      { /* Connection space available */
         handle_ttweet_client(clntSock);
       }
       else
-      {
+      { /* Connection space unavailable */
         reject_ttweet_client(clntSock);
       }
 
@@ -118,6 +153,7 @@ int main(int argc, char *argv[])
   }
 }
 
+/** \copydoc child_exit_signal_handler */
 void child_exit_signal_handler()
 {
   pid_t processID; /* Process ID from fork() */
@@ -136,6 +172,7 @@ void child_exit_signal_handler()
   }
 }
 
+/** \copydoc create_tcp_serv_socket */
 int create_tcp_serv_socket(unsigned short port)
 {
   int sock;                          /* socket to create */
@@ -162,6 +199,7 @@ int create_tcp_serv_socket(unsigned short port)
   return sock;
 }
 
+/** \copydoc accept_tcp_connection */
 int accept_tcp_connection(int servSock)
 {
   int clntSock;                      /* Socket descriptor for client */
@@ -183,6 +221,7 @@ int accept_tcp_connection(int servSock)
   return clntSock;
 }
 
+/** \copydoc handle_ttweet_client */
 void handle_ttweet_client(int clntSocket)
 {
   char objReceived[MAX_RESP_LEN];
@@ -190,7 +229,7 @@ void handle_ttweet_client(int clntSocket)
   int loop = 1;
 
   while (loop)
-  {
+  { /* loop continuously to exchange messages with client */
     // print_active_users();
     cJSON *jobjReceived = cJSON_CreateObject();
     receive_response(clntSocket, objReceived);
@@ -198,10 +237,10 @@ void handle_ttweet_client(int clntSocket)
     loop = handle_client_response(clntSocket, jobjReceived, &clientUserIdx);
     cJSON_Delete(jobjReceived);
   }
-
   close(clntSocket); /* Close client socket */
 }
 
+/** \copydoc reject_ttweet_client */
 void reject_ttweet_client(int clntSocket)
 {
   char objReceived[MAX_RESP_LEN];
@@ -216,6 +255,7 @@ void reject_ttweet_client(int clntSocket)
   close(clntSocket); /* Close client socket */
 }
 
+/** \copydoc handle_client_response */
 int handle_client_response(int clntSocket, cJSON *jobjReceived, int *clientUserIdx)
 {
   int requestCode;
@@ -223,11 +263,12 @@ int handle_client_response(int clntSocket, cJSON *jobjReceived, int *clientUserI
   char *receiverUsername;
   cJSON *jobjToSend = cJSON_CreateObject();
 
+  /* Extract requestCode and username */
   requestCode = cJSON_GetObjectItemCaseSensitive(jobjReceived, "requestCode")->valueint;
   senderUsername = cJSON_GetObjectItemCaseSensitive(jobjReceived, "username")->valuestring;
 
   switch (requestCode)
-  {
+  { /* Handles client request according to requestCode */
   case REQ_VALIDATE_USER:
     handle_validate_user_request(jobjToSend, senderUsername, clientUserIdx);
     break;
@@ -250,13 +291,15 @@ int handle_client_response(int clntSocket, cJSON *jobjReceived, int *clientUserI
   default:
     return handle_invalid_request(clientUserIdx);
   }
-
+  /* Send payload to client */
   send_payload(clntSocket, jobjToSend);
 
+  /* Clear cJSON object */
   cJSON_Delete(jobjToSend);
   return 1;
 }
 
+/** \copydoc handle_validate_user_request */
 void handle_validate_user_request(cJSON *jobjToSend, char *senderUsername, int *clientUserIdx)
 {
   int isUserValid = 1;
@@ -274,17 +317,17 @@ void handle_validate_user_request(cJSON *jobjToSend, char *senderUsername, int *
       }
     }
     else
-    {
+    { /* Space is available in activeUsers */
       isSpaceAvailable = 1;
     }
   }
 
   if (isUserValid && isSpaceAvailable)
-  {
+  { /* Proceed to add user to activeUsers */
     for (int userIdx = 0; userIdx < MAX_CONC_CONN; userIdx++)
     {
       if (!activeUsers[userIdx].isOccupied)
-      {
+      {                                      /* Stop at the first available space and save user */
         activeUsers[userIdx].isOccupied = 1; /* mark index as occupied */
         strcpy(activeUsers[userIdx].username, senderUsername);
         *clientUserIdx = userIdx;
@@ -299,6 +342,7 @@ void handle_validate_user_request(cJSON *jobjToSend, char *senderUsername, int *
   }
 }
 
+/** \copydoc handle_tweet_request */
 void handle_tweet_request(cJSON *jobjToSend, cJSON *jobjReceived, char *senderUsername, int *clientUserIdx)
 {
   store_latest_tweet(jobjReceived, senderUsername);
@@ -307,6 +351,7 @@ void handle_tweet_request(cJSON *jobjToSend, cJSON *jobjReceived, char *senderUs
   create_json_server_payload(jobjToSend, RES_TWEET, *clientUserIdx, "Tweeted successfully.\n");
 }
 
+/** \copydoc handle_subscribe_request */
 void handle_subscribe_request(cJSON *jobjToSend, cJSON *jobjReceived, char *senderUsername, int *clientUserIdx)
 {
   int isSubscriptionExists = 0;
@@ -329,22 +374,22 @@ void handle_subscribe_request(cJSON *jobjToSend, cJSON *jobjReceived, char *send
   }
 
   if (isSubscriptionsFull)
-  {
+  { /* subscriptions array is full */
     create_json_server_payload(jobjToSend, RES_SUBSCRIBE, *clientUserIdx, "Subscription list full. Please unsubscribe to a hashtag first!\n");
   }
   else if (isSubscriptionExists)
-  {
+  { /* subscription already exists */
     create_json_server_payload(jobjToSend, RES_SUBSCRIBE, *clientUserIdx, "Subscription already exists.\n");
   }
   else
-  {
+  { /* Proceed to store subscription */
     for (int subscriptionIdx = 0; subscriptionIdx < MAX_SUBSCRIPTIONS; subscriptionIdx++)
     {
       if (strcmp(activeUsers[*clientUserIdx].subscriptions[subscriptionIdx], "") == 0)
       { /* found an empty slot for subscription */
         strcpy(activeUsers[*clientUserIdx].subscriptions[subscriptionIdx], subscriptionHashtag);
         if (strcmp(subscriptionHashtag, "ALL") == 0)
-        {
+        { /* user is subscribing to ALL */
           activeUsers[*clientUserIdx].isSubscribedAll = 1;
         }
         break;
@@ -354,6 +399,7 @@ void handle_subscribe_request(cJSON *jobjToSend, cJSON *jobjReceived, char *send
   }
 }
 
+/** \copydoc handle_unsubscribe_request */
 void handle_unsubscribe_request(cJSON *jobjToSend, cJSON *jobjReceived, char *senderUsername, int *clientUserIdx)
 {
   int isSubscriptionExists = 0;
@@ -376,32 +422,37 @@ void handle_unsubscribe_request(cJSON *jobjToSend, cJSON *jobjReceived, char *se
     }
   }
   if (isSubscriptionExists)
-  {
+  { /* subscription exists */
     create_json_server_payload(jobjToSend, RES_UNSUBSCRIBE, *clientUserIdx, "Successfully unsubscribed.\n");
   }
   else
-  {
+  { /* subscription does not exist */
     create_json_server_payload(jobjToSend, RES_UNSUBSCRIBE, *clientUserIdx, "You were not subscribed to that hashtag.\n");
   }
 }
 
+/** \copydoc handle_timeline_request */
 void handle_timeline_request(cJSON *jobjToSend, int *clientUserIdx)
 {
   create_json_server_payload(jobjToSend, RES_TIMELINE, *clientUserIdx, "");
 }
 
+/** \copydoc handle_exit_request */
 int handle_exit_request(int *userIdx)
 {
-  /* mark entry as unoccupied */
+  /* mark space as unoccupied */
   clear_user_at_index(userIdx);
   printf("Client at index %d disconnected.\n", *userIdx);
   return 0;
 }
+
+/** \copydoc handle_invalid_request */
 int handle_invalid_request()
 {
   return 0;
 }
 
+/** \copydoc handle_tweet_updates */
 void handle_tweet_updates()
 {
   for (int userIdx = 0; userIdx < MAX_CONC_CONN; userIdx++)
@@ -432,10 +483,12 @@ void handle_tweet_updates()
   }
 }
 
+/** \copydoc add_tweet_to_user */
 void add_tweet_to_user(int userIdx, char *senderUsername, char *ttweetString, char *originHashtag)
 {
   char tweetItem[MAX_TWEET_ITEM_LEN];
 
+  /* Format a tweetItem object */
   strcpy(tweetItem, activeUsers[userIdx].username);
   strcat(tweetItem, " ");
   strcat(tweetItem, senderUsername);
@@ -452,9 +505,12 @@ void add_tweet_to_user(int userIdx, char *senderUsername, char *ttweetString, ch
       return;
     }
   }
+
+  /* Cannot add tweetItem as queue is full */
   printf("Client %s: Queue full. Tweet was not stored.\n", senderUsername);
 }
 
+/** \copydoc initialize_user_array */
 void initialize_user_array()
 {
   for (int i = 0; i < MAX_CONC_CONN; i++)
@@ -474,6 +530,7 @@ void initialize_user_array()
   }
 }
 
+/** \copydoc initialize_latest_tweet */
 void initialize_latest_tweet()
 {
   latestTweet->tweetID = 0;
@@ -486,6 +543,7 @@ void initialize_latest_tweet()
   }
 }
 
+/** \copydoc create_json_server_payload */
 void create_json_server_payload(cJSON *jobjToSend, int commandCode, int userIdx, char *detailedMessage)
 {
 
@@ -494,7 +552,7 @@ void create_json_server_payload(cJSON *jobjToSend, int commandCode, int userIdx,
   cJSON_AddItemToObject(jobjToSend, "detailedMessage", cJSON_CreateString(detailedMessage));
 
   switch (commandCode)
-  {
+  { /* Add additional fields to JSON obj according to request code */
   case RES_TIMELINE:
     add_pending_tweets_to_jobj(jobjToSend, userIdx);
     break;
@@ -514,6 +572,7 @@ void create_json_server_payload(cJSON *jobjToSend, int commandCode, int userIdx,
   }
 }
 
+/** \copydoc add_pending_tweets_to_jobj */
 void add_pending_tweets_to_jobj(cJSON *jobj, int userIdx)
 {
   cJSON *jarray = cJSON_CreateArray(); /*Creating a json array*/
@@ -531,7 +590,7 @@ void add_pending_tweets_to_jobj(cJSON *jobj, int userIdx)
         break;
       }
       else
-      {
+      { /* Add pending tweet to array and clear from memory */
         cJSON_AddItemToArray(jarray, cJSON_CreateString(activeUsers[userIdx].pendingTweets[pendingTweetIdx]));
         strcpy(activeUsers[userIdx].pendingTweets[pendingTweetIdx], "");
       }
@@ -540,6 +599,7 @@ void add_pending_tweets_to_jobj(cJSON *jobj, int userIdx)
   cJSON_AddItemToObject(jobj, "storedTweets", jarray); /*Add tweets to JSON object*/
 }
 
+/** \copydoc store_latest_tweet */
 void store_latest_tweet(cJSON *jobjReceived, char *senderUsername)
 {
   (latestTweet->tweetID)++;
@@ -557,6 +617,7 @@ void store_latest_tweet(cJSON *jobjReceived, char *senderUsername)
   }
 }
 
+/** \copydoc print_active_users */
 void print_active_users()
 {
   printf("Active users:\n");
@@ -576,6 +637,7 @@ void print_active_users()
   }
 }
 
+/** \copydoc print_latest_tweet */
 void print_latest_tweet()
 {
   printf("Latest Tweet:\n");
@@ -589,6 +651,7 @@ void print_latest_tweet()
   }
 }
 
+/** \copydoc print_pending_tweets */
 void print_pending_tweets(int userIdx)
 {
   for (int i = 0; i < MAX_TWEET_QUEUE; i++)
@@ -597,6 +660,7 @@ void print_pending_tweets(int userIdx)
   }
 }
 
+/** \copydoc clear_user_at_index */
 void clear_user_at_index(int *userIdx)
 {
   activeUsers[*userIdx].isOccupied = 0;

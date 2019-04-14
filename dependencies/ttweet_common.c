@@ -8,11 +8,25 @@
 /**
   * @file ttweet_common.c
   * @author Jordan396
-  * @date 29 March 2019
-  * @brief This file contains functions used in both client and server side for trivial-twitter-v2.
+  * @date 13 April 2019
+  * @brief Documentation for functions in ttweet_common.c.
+  *
+  * This file contains functions common to both client and server in trivial twitter.
+  * 
+  * For an overview of what this program does, visit <https://github.com/Jordan396/trivial-twitter-v2>.
+  * 
+  * Code is documented according to GNOME and Doxygen standards.
+  * <https://developer.gnome.org/programming-guidelines/stable/c-coding-style.html.en>
+  * <http://www.doxygen.nl/manual/docblocks.html>
   */
 
 #include "ttweet_common.h"
+
+void die_with_error(char *errorMessage);
+int persist_with_error(char *errorMessage);
+int send_payload(int sock, cJSON *jobjToSend);
+void waitFor(unsigned int secs);
+void receive_response(int sock, char *objReceived);
 
 /** \copydoc die_with_error */
 void die_with_error(char *errorMessage)
@@ -28,6 +42,7 @@ int persist_with_error(char *errorMessage)
   return 0;
 }
 
+/** \copydoc send_payload */
 int send_payload(int sock, cJSON *jobjToSend)
 {
   char buffer[RCV_BUF_SIZE];
@@ -42,6 +57,7 @@ int send_payload(int sock, cJSON *jobjToSend)
   return 1;
 }
 
+/** \copydoc waitFor */
 void waitFor(unsigned int secs)
 {
   unsigned int retTime = time(0) + secs; // Get finishing time.
@@ -49,6 +65,7 @@ void waitFor(unsigned int secs)
     ; // Loop until it arrives.
 }
 
+/** \copydoc receive_response */
 void receive_response(int sock, char *objReceived)
 {
   int bytesToRecv = 0;
@@ -81,4 +98,3 @@ void receive_response(int sock, char *objReceived)
   }
   strncpy(objReceived, response, sizeof(response));
 }
-

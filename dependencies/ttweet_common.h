@@ -5,6 +5,22 @@
  *   repository. If not, see <https://opensource.org/licenses/MIT>.         *
  ****************************************************************************/
 
+/**
+  * @file ttweet_common.h
+  * @author Jordan396
+  * @date 13 April 2019
+  * @brief Documentation for functions in ttweet_common.h.
+  *
+  * This header file has been created to describe the functions 
+  * and declare constants in ttweet_common.h.
+  * 
+  * For an overview of what this program does, visit <https://github.com/Jordan396/trivial-twitter-v2>.
+  * 
+  * Code is documented according to GNOME and Doxygen standards.
+  * <https://developer.gnome.org/programming-guidelines/stable/c-coding-style.html.en>
+  * <http://www.doxygen.nl/manual/docblocks.html>
+  */
+
 /* Connections */
 #define MAX_PENDING 5   /* Maximum outstanding connection requests */
 #define MAX_CONC_CONN 5 /* Maximum number of concurrent connections */
@@ -69,26 +85,8 @@
   * This header file describes functions used in both client and server side for trivial-twitter-v2.
   */
 
-/**
- * @brief Error handling function for major errors
- *
- * Description Prints the error message and exits the program gracefully.
- *
- * @param errorMessage Error message to be printed.
- * @return void
- */
 void die_with_error(char *errorMessage);
-
-/**
- * @brief Error handling function for minor errors
- *
- * Description Prints the error message and continue program execution.
- *
- * @param errorMessage Error message to be printed.
- * @return -1
- */
 int persist_with_error(char *errorMessage);
-
 int send_payload(int sock, cJSON *jobjToSend);
-void receive_response(int sock, char *objReceived);
 void waitFor(unsigned int secs);
+void receive_response(int sock, char *objReceived);

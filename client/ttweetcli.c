@@ -13,7 +13,7 @@
 /**
   * @file ttweetcli.c
   * @author Jordan396
-  * @date 14 February 2019
+  * @date 13 April 2019
   * @brief ttweetcli creates a persistent connection to ttweetser server,
   * allowing tweet, subscribe, unsubscribe, timeline and exit commands to be executed.
   *
@@ -24,8 +24,8 @@
   * <https://developer.gnome.org/programming-guidelines/stable/c-coding-style.html.en>
   * <http://www.doxygen.nl/manual/docblocks.html>
   * 
-  * ttweetcli creates a persistent connection to a ttweetser server. Once a connection
-  * has been established, the ttweetcli can run the following commands:
+  * ttweetcli creates a persistent connection to a ttweetser server. 
+  * Once a connection has been established, the client can run the following commands:
   * 1. tweet​ "<150 char max tweet>" <Hashtag>
   *   - Upload tweet to server.
   * 2. subscribe​ <Hashtag>
@@ -40,21 +40,28 @@
 
 #include "ttweetcli.h"
 
-int parse_hashtags(char *validHashtags[], int *numValidHashtags, char *inputHashtags);                                             /* Parses hashtags from user input */
-void save_current_hashtag(char *currentHashtagBuffer, int *currentHashtagBufferIdx, char *validHashtags[], int *numValidHashtags); /* Save current hashtag buffer */
-void reset_client_variables(int *clientCommandSuccess, char *validHashtags[], int *numValidHashtags, cJSON *jobjToSend);           /* Resets client variables to prepare for the next command */
-void deallocate_string_array(char *stringArray[], int numStringsInArray);                                                          /* Deallocates memory from a dynamic string array */
+/* Function prototypes */
+
+/* functions to handle and validate user input */
+int get_client_input(char *clientInput);                                                                                           /* Reads user input from stdin */
+int parse_client_command(char inputHashtags[], char ttweetString[]);                                                               /* Parses command from user input */
+int parse_hashtags(char *validHashtags[], int *numValidHashtags, char *inputHashtags);                                             /* Parses hashtags from user command */
 int has_duplicate_string(char *stringArray[], int numStringsInArray);                                                              /* Checks for duplicates in string array */
-int parse_client_command(char inputHashtags[], char ttweetString[]);
-int check_tweet_cmd(char clientInput[], int charIdx, char inputHashtags[], char ttweetString[]);
-int check_subscribe_cmd(char clientInput[], int charIdx, char inputHashtags[]);
-int check_unsubscribe_cmd(char clientInput[], int charIdx, char inputHashtags[]);
-int check_timeline_cmd(int endOfCmd);
-int check_exit_cmd(int endOfCmd);
-void create_json_client_payload(cJSON *jobjToSend, int commandCode, char *username, int userIdx, char *ttweetString, char *validHashtags[], int numValidHashtags);
-void handle_server_response(cJSON *jobjReceived, int *userIdx);
-int get_client_input(char *clientInput);
-int check_hashtag_all_exists(char *validHashtags[], int numValidHashtags);
+int is_hashtag_all_exists(char *validHashtags[], int numValidHashtags);                                                            /* Checks if hashtag #ALL exists */
+void reset_client_variables(int *clientCommandSuccess, char *validHashtags[], int *numValidHashtags, cJSON *jobjToSend);           /* Resets client variables for next command */
+void deallocate_string_array(char *stringArray[], int numStringsInArray);                                                          /* Deallocates memory from a dynamic string array */
+void save_current_hashtag(char *currentHashtagBuffer, int *currentHashtagBufferIdx, char *validHashtags[], int *numValidHashtags); /* Save current hashtag buffer */
+
+/* functions to support transmission of data */
+void create_json_client_payload(cJSON *jobjToSend, int commandCode, char *username, int userIdx, char *ttweetString, char *validHashtags[], int numValidHashtags); /* Creates payload to send to server */
+void handle_server_response(cJSON *jobjReceived, int *userIdx);                                                                                                    /* Handles server response */
+
+/* functions to parse and validate user commands */
+int check_tweet_cmd(char clientInput[], int charIdx, char inputHashtags[], char ttweetString[]); /* Parses and validates tweet command */
+int check_subscribe_cmd(char clientInput[], int charIdx, char inputHashtags[]);                  /* Parses and validates subscribe command */
+int check_unsubscribe_cmd(char clientInput[], int charIdx, char inputHashtags[]);                /* Parses and validates unsubscribe command */
+int check_timeline_cmd(int endOfCmd);                                                            /* Parses and validates timeline command */
+int check_exit_cmd(int endOfCmd);                                                                /* Parses and validates exit command */
 
 int main(int argc, char *argv[])
 {
@@ -64,19 +71,19 @@ int main(int argc, char *argv[])
   unsigned short ttweetServPort;     /* ttweet server port */
   char *servIP;                      /* Server IP address (dotted quad) */
 
-  /* Variables to handle user commands */
-  int clientCommandCode;
-  int clientCommandSuccess;
-  char ttweetString[MAX_TWEET_LEN]; /* String to be send to ttweet server */
-  char inputHashtags[MAX_HASHTAG_LEN];
-  char *username;
-  char *validHashtags[MAX_HASHTAG_CNT]; /* Array of valid hashtags */
+  /* Variables for user input */
+  int clientCommandCode;                /* Request code recognized by server */
+  int clientCommandSuccess;             /* Boolean to track command validity */
   int numValidHashtags;                 /* Number of valid hashtags */
+  char ttweetString[MAX_TWEET_LEN];     /* String to be send to ttweet server */
+  char *username;                       /* Client username */
+  char inputHashtags[MAX_HASHTAG_LEN];  /* Array of all hashtags submitted */
+  char *validHashtags[MAX_HASHTAG_CNT]; /* Array of valid hashtags */
 
-  /* Variables used to handle transfer of data over TCP */
-  cJSON *jobjToSend;   /* JSON payload to be sent */
-  cJSON *jobjReceived; /* JSON response received */
-  char objReceived[MAX_RESP_LEN];
+  /* Variables to handle transfer of data over TCP */
+  cJSON *jobjToSend;              /* JSON payload to be sent */
+  cJSON *jobjReceived;            /* JSON response received */
+  char objReceived[MAX_RESP_LEN]; /* String response received */
 
   /* Variables for server to recognize client */
   int userIdx = INVALID_USER_INDEX;
@@ -109,28 +116,29 @@ int main(int argc, char *argv[])
   create_json_client_payload(jobjToSend, REQ_VALIDATE_USER, username, INVALID_USER_INDEX, ttweetString, validHashtags, numValidHashtags);
   send_payload(sock, jobjToSend);
 
-  /* Process validation code from server */
+  /* Process username validation code from server */
   receive_response(sock, objReceived);
   jobjReceived = cJSON_Parse(objReceived);
   handle_server_response(jobjReceived, &userIdx);
 
   while (1)
   { /* Loop continuously */
+
+    /* Resets variables for next command */
     reset_client_variables(&clientCommandSuccess, validHashtags, &numValidHashtags, jobjToSend);
     jobjToSend = cJSON_CreateObject();
+
+    /* Parse client command */
     clientCommandCode = parse_client_command(inputHashtags, ttweetString);
 
     switch (clientCommandCode)
-    {
+    { /* Further processing of client commands */
     case REQ_TWEET:
-      /* tweet */
       clientCommandSuccess = parse_hashtags(validHashtags, &numValidHashtags, inputHashtags);
-      clientCommandSuccess = check_hashtag_all_exists(validHashtags, numValidHashtags);
+      clientCommandSuccess = is_hashtag_all_exists(validHashtags, numValidHashtags);
       break;
     case REQ_SUBSCRIBE:
-      /* subscribe */
     case REQ_UNSUBSCRIBE:
-      /* unsubscribe */
       clientCommandSuccess = parse_hashtags(validHashtags, &numValidHashtags, inputHashtags);
       if (numValidHashtags != 1)
       {
@@ -150,13 +158,13 @@ int main(int argc, char *argv[])
     }
 
     if (clientCommandSuccess)
-    {
+    { /* No errors when processing client command */
       create_json_client_payload(jobjToSend, clientCommandCode, username, userIdx, ttweetString, validHashtags, numValidHashtags);
       clientCommandSuccess = send_payload(sock, jobjToSend);
     }
 
     if (clientCommandCode == REQ_EXIT)
-    {
+    { /* Client entered exit command */
       printf("Exiting client...\n");
       waitFor(3);
       close(sock);
@@ -164,9 +172,10 @@ int main(int argc, char *argv[])
     }
 
     if (clientCommandSuccess)
-    {
+    { /* Payload sent successfully. Note that all valid commands except exit will trigger this if block. */
       receive_response(sock, objReceived);
       jobjReceived = cJSON_Parse(objReceived);
+      /* Handles server response accordingly */
       handle_server_response(jobjReceived, &userIdx);
     }
   }
@@ -180,7 +189,6 @@ int parse_hashtags(char *validHashtags[], int *numValidHashtags, char *inputHash
   int lenInputHashtags;                       /* Length of inputHashtags string */
   char currentHashtagBuffer[MAX_HASHTAG_LEN]; /* Current hashtag being parsed */
   int currentHashtagBufferIdx;                /* char index of current hashtag being parsed */
-  char *errorMessage;
 
   *numValidHashtags = 0;       /* Initialize number of valid hashtags */
   currentHashtagBufferIdx = 0; /* Initialize buffer index */
@@ -218,7 +226,7 @@ int parse_hashtags(char *validHashtags[], int *numValidHashtags, char *inputHash
           return persist_with_error("Invalid hashtag(s)! Hashtag limit exceeded.");
         }
         else
-        {
+        { /* Save the current hashtag */
           save_current_hashtag(currentHashtagBuffer, &currentHashtagBufferIdx, validHashtags, numValidHashtags);
         }
       }
@@ -236,7 +244,7 @@ int parse_hashtags(char *validHashtags[], int *numValidHashtags, char *inputHash
     inputHashtagsCharIdx++;
   }
 
-  /* Reached end of inputHashtags */
+  /* Reached end of inputHashtags (reached char \0) */
   if (*numValidHashtags == MAX_HASHTAG_CNT)
   { /* Hashtag limit exceeded */
     return persist_with_error("Invalid hashtag(s)! Hashtag limit exceeded.");
@@ -286,7 +294,7 @@ void reset_client_variables(int *clientCommandSuccess, char *validHashtags[], in
   deallocate_string_array(validHashtags, *numValidHashtags);
   *numValidHashtags = 0;
   if (!jobjToSend)
-  {
+  { /* jobjToSend still exists */
     cJSON_Delete(jobjToSend);
   }
 }
@@ -304,12 +312,13 @@ void deallocate_string_array(char *stringArray[], int numStringsInArray)
   }
 }
 
+/** \copydoc parse_client_command */
 int parse_client_command(char inputHashtags[], char ttweetString[])
 {
-  char clientInput[MAX_CLI_INPUT_LEN];
-  char clientCommand[20];
-  int charIdx = 0;
-  int endOfCmd = 0;
+  char clientInput[MAX_CLI_INPUT_LEN]; /* Buffer to store client input */
+  char clientCommand[20];              /* Buffer to store client command */
+  int charIdx = 0;                     /* Tracks index in clientInput */
+  int endOfCmd = 0;                    /* Tracks when end of clientInput reached */
 
   char *unknownCmdMsg = "Command not recognized. Here are the available commands:\n\
                         1. tweet​ \"<150 char max tweet>\" <Hashtag>\n\
@@ -319,10 +328,11 @@ int parse_client_command(char inputHashtags[], char ttweetString[])
                         5. exit\n";
 
   if (!get_client_input(clientInput))
-  {
-    return persist_with_error("Your input is too long. Please try again.\n");
+  { /* Client input exceeds MAX_CLI_INPUT_LEN */
+    return persist_with_error("Input is too long. Please try again.\n");
   }
 
+  /* Parse client input */
   while (clientInput[charIdx] != ' ')
   {
     if (clientInput[charIdx] == '\0')
@@ -338,9 +348,11 @@ int parse_client_command(char inputHashtags[], char ttweetString[])
     charIdx++;
   }
 
+  /* Mark end of command word */
   clientCommand[charIdx] = '\0';
   charIdx++;
 
+  /* Validates input according to command */
   if (strcmp(clientCommand, "tweet") == 0)
   {
     return check_tweet_cmd(clientInput, charIdx, inputHashtags, ttweetString);
@@ -367,24 +379,27 @@ int parse_client_command(char inputHashtags[], char ttweetString[])
   }
 }
 
+/** \copydoc check_tweet_cmd */
 int check_tweet_cmd(char clientInput[], int charIdx, char inputHashtags[], char ttweetString[])
 {
   int ttweetStringIdx = 0;
   int inputHashtagsIdx = 0;
   char *invalidTweetCmdMsg = "tweet command not formatted correctly. Please try again.";
-  char *errorMessage;
 
   if (clientInput[charIdx] != '\"')
-  {
+  { /* Expected " here to start message */
     return persist_with_error(invalidTweetCmdMsg);
   }
+
   charIdx++;
+
   if (clientInput[charIdx] == '\"')
-  {
+  { /* Consecutive " indicating empty message */
     return persist_with_error("Tweet message cannot be empty!");
   }
+
   while (clientInput[charIdx] != '\"')
-  {
+  { /* Loop between double quotes to save ttweetString */
     if (ttweetStringIdx > MAX_TWEET_LEN - 1)
     {
       return persist_with_error("Tweet message is too long. Please try again");
@@ -393,15 +408,21 @@ int check_tweet_cmd(char clientInput[], int charIdx, char inputHashtags[], char 
     charIdx++;
     ttweetStringIdx++;
   }
+
   charIdx++;
+
+  /* Mark end of ttweetString */
   ttweetString[ttweetStringIdx] = '\0';
+
   if (clientInput[charIdx] != ' ')
-  {
+  { /* Expected whitespace after tweet message */
     return persist_with_error(invalidTweetCmdMsg);
   }
+
   charIdx++;
+
   while (clientInput[charIdx] != '\0')
-  {
+  { /* Loop until end of clientInput */
     if (clientInput[charIdx] == ' ')
     {
       return persist_with_error("Invalid hashtag(s)! Hashtag cannot contain whitespaces.");
@@ -410,23 +431,25 @@ int check_tweet_cmd(char clientInput[], int charIdx, char inputHashtags[], char 
     {
       return persist_with_error("Invalid hashtag(s)! Hashtag cannot exceed 25 chars.");
     }
-    strncpy(inputHashtags + inputHashtagsIdx, clientInput + charIdx, sizeof(char));
 
+    /* Save clientInput char to inputHashtags */
+    strncpy(inputHashtags + inputHashtagsIdx, clientInput + charIdx, sizeof(char));
     charIdx++;
     inputHashtagsIdx++;
   }
+  /* Mark end of inputHashtags */
   inputHashtags[inputHashtagsIdx] = '\0';
-
   return REQ_TWEET;
 }
 
+/** \copydoc check_subscribe_cmd */
 int check_subscribe_cmd(char clientInput[], int charIdx, char inputHashtags[])
 {
   int inputHashtagsIdx = 0;
   char *invalidSubscribeCmdMsg = "subscribe command not formatted correctly. Please try again.";
 
   while (clientInput[charIdx] != '\0')
-  {
+  { /* Loop until end of clientInput */
     if (clientInput[charIdx] == ' ')
     {
       return persist_with_error(invalidSubscribeCmdMsg);
@@ -435,22 +458,25 @@ int check_subscribe_cmd(char clientInput[], int charIdx, char inputHashtags[])
     {
       return persist_with_error("Invalid hashtag(s)! Hashtag cannot exceed 25 chars.");
     }
-    strncpy(inputHashtags + inputHashtagsIdx, clientInput + charIdx, sizeof(char));
 
+    /* Save clientInput char to inputHashtags */
+    strncpy(inputHashtags + inputHashtagsIdx, clientInput + charIdx, sizeof(char));
     charIdx++;
     inputHashtagsIdx++;
   }
+  /* Mark end of inputHashtags */
   inputHashtags[inputHashtagsIdx] = '\0';
   return REQ_SUBSCRIBE;
 }
 
+/** \copydoc check_subscribe_cmd */
 int check_unsubscribe_cmd(char clientInput[], int charIdx, char inputHashtags[])
 {
   int inputHashtagsIdx = 0;
   char *invalidUnsubscribeCmdMsg = "unsubscribe command not formatted correctly. Please try again.";
 
   while (clientInput[charIdx] != '\0')
-  {
+  { /* Loop until end of clientInput */
     if (clientInput[charIdx] == ' ')
     {
       return persist_with_error(invalidUnsubscribeCmdMsg);
@@ -459,43 +485,48 @@ int check_unsubscribe_cmd(char clientInput[], int charIdx, char inputHashtags[])
     {
       return persist_with_error("Invalid hashtag(s)! Hashtag cannot exceed 25 chars.");
     }
+    /* Save clientInput char to inputHashtags */
     inputHashtags[inputHashtagsIdx] = clientInput[charIdx];
     charIdx++;
     inputHashtagsIdx++;
   }
+  /* Mark end of inputHashtags */
   inputHashtags[inputHashtagsIdx] = '\0';
   return REQ_UNSUBSCRIBE;
 }
 
+/** \copydoc check_timeline_cmd */
 int check_timeline_cmd(int endOfCmd)
 {
   char *invalidTimelineCmdMsg = "timeline command not formatted correctly. Please try again.";
 
   if (!endOfCmd)
-  {
+  { /* timeline is a single word command */
     return persist_with_error(invalidTimelineCmdMsg);
   }
   return REQ_TIMELINE;
 }
 
+/** \copydoc check_exit_cmd */
 int check_exit_cmd(int endOfCmd)
 {
   char *invalidExitCmdMsg = "exit command not formatted correctly. Please try again.";
 
   if (!endOfCmd)
-  {
+  { /* exit is a single word command */
     return persist_with_error(invalidExitCmdMsg);
   }
   return REQ_EXIT;
 }
 
+/** \copydoc create_json_client_payload */
 void create_json_client_payload(cJSON *jobjToSend, int commandCode, char *username, int userIdx, char *ttweetString, char *validHashtags[], int numValidHashtags)
 {
-  cJSON_AddItemToObject(jobjToSend, "requestCode", cJSON_CreateNumber(commandCode)); /*Add command to JSON object*/
+  cJSON_AddItemToObject(jobjToSend, "requestCode", cJSON_CreateNumber(commandCode)); /*Add command request code to JSON object*/
   cJSON_AddItemToObject(jobjToSend, "username", cJSON_CreateString(username));       /*Add username to JSON object*/
 
   switch (commandCode)
-  {
+  { /* Add additional fields to jobj according to command */
   case REQ_TWEET:
   {
     cJSON *jarray = cJSON_CreateArray(); /*Creating a json array*/
@@ -503,9 +534,9 @@ void create_json_client_payload(cJSON *jobjToSend, int commandCode, char *userna
     { /*Add hashtags to array*/
       cJSON_AddItemToArray(jarray, cJSON_CreateString(validHashtags[i]));
     }
-    cJSON_AddItemToObject(jobjToSend, "ttweetString", cJSON_CreateString(ttweetString)); /*Add ttweetString to JSON object*/
-    cJSON_AddItemToObject(jobjToSend, "numValidHashtags", cJSON_CreateNumber(numValidHashtags));
-    cJSON_AddItemToObject(jobjToSend, "ttweetHashtags", jarray); /*Add hashtags to JSON object*/
+    cJSON_AddItemToObject(jobjToSend, "ttweetString", cJSON_CreateString(ttweetString));         /*Add ttweetString to JSON object*/
+    cJSON_AddItemToObject(jobjToSend, "numValidHashtags", cJSON_CreateNumber(numValidHashtags)); /*Add numValidHashtags to JSON object*/
+    cJSON_AddItemToObject(jobjToSend, "ttweetHashtags", jarray);                                 /*Add hashtags to JSON object*/
     break;
   }
   case REQ_SUBSCRIBE:
@@ -522,12 +553,13 @@ void create_json_client_payload(cJSON *jobjToSend, int commandCode, char *userna
   }
 }
 
+/** \copydoc handle_server_response */
 void handle_server_response(cJSON *jobjReceived, int *userIdx)
 {
-  int responseCode = cJSON_GetObjectItemCaseSensitive(jobjReceived, "responseCode")->valueint;
+  int responseCode = cJSON_GetObjectItemCaseSensitive(jobjReceived, "responseCode")->valueint; /* Extract server response code */
 
   switch (responseCode)
-  {
+  { /* Process server response according to responseCode */
   case RES_USER_INVALID:
     die_with_error(cJSON_GetObjectItemCaseSensitive(jobjReceived, "detailedMessage")->valuestring);
     break;
@@ -537,7 +569,6 @@ void handle_server_response(cJSON *jobjReceived, int *userIdx)
     printf("Username legal. Connection established.\n");
     break;
   }
-
   case RES_SUBSCRIBE:
   case RES_UNSUBSCRIBE:
   case RES_TWEET:
@@ -545,30 +576,29 @@ void handle_server_response(cJSON *jobjReceived, int *userIdx)
     printf("Server response: %s", cJSON_GetObjectItemCaseSensitive(jobjReceived, "detailedMessage")->valuestring);
     break;
   }
-
   case RES_TIMELINE:
   {
     cJSON *jarray = cJSON_GetObjectItemCaseSensitive(jobjReceived, "storedTweets");
     for (int i = 0; i < cJSON_GetArraySize(jarray); i++)
-    {
+    { /* Print all pending tweets */
       printf("%s\n", cJSON_GetArrayItem(jarray, i)->valuestring);
     }
     break;
   }
-
   default:
     die_with_error("Error! Server sent an invalid response code.");
     break;
   }
 }
 
+/** \copydoc get_client_input */
 int get_client_input(char *clientInput)
 {
   int i = 0;
   while (1)
-  {
-    if (i > (MAX_CLI_INPUT_LEN - 50))
-    {
+  { /* Loop continuously to scan characters */
+    if (i > (MAX_CLI_INPUT_LEN - 5))
+    { /* clientInput buffer exceeded */
       return 0;
     }
     scanf("%c", &clientInput[i]);
@@ -576,16 +606,17 @@ int get_client_input(char *clientInput)
       break;
     i++;
   }
+  /* Mark end of clientInput */
   clientInput[i] = '\0';
   return 1;
 }
 
-int check_hashtag_all_exists(char *validHashtags[], int numValidHashtags)
+int is_hashtag_all_exists(char *validHashtags[], int numValidHashtags)
 {
   for (int hashtagIdx = 0; hashtagIdx < numValidHashtags; hashtagIdx++)
   {
     if (strcmp(validHashtags[hashtagIdx], "ALL") == 0)
-    return persist_with_error("Invalid hashtag(s)! Hashtag #ALL is not allowed when tweeting.");
+      return persist_with_error("Invalid hashtag(s)! Hashtag #ALL is not allowed when tweeting.");
   }
   return 1;
 }

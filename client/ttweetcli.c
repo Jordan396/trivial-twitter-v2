@@ -74,7 +74,7 @@ int main(int argc, char *argv[])
   /* Variables for user input */
   int clientCommandCode;                /* Request code recognized by server */
   int clientCommandSuccess;             /* Boolean to track command validity */
-  int numValidHashtags;                 /* Number of valid hashtags */
+  int numValidHashtags = 0;                 /* Number of valid hashtags */
   char ttweetString[MAX_TWEET_LEN];     /* String to be send to ttweet server */
   char *username;                       /* Client username */
   char inputHashtags[MAX_HASHTAG_LEN];  /* Array of all hashtags submitted */

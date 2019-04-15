@@ -74,7 +74,7 @@ int main(int argc, char *argv[])
   /* Variables for user input */
   int clientCommandCode;                /* Request code recognized by server */
   int clientCommandSuccess;             /* Boolean to track command validity */
-  int numValidHashtags = 0;                 /* Number of valid hashtags */
+  int numValidHashtags = 0;             /* Number of valid hashtags */
   char ttweetString[MAX_TWEET_LEN];     /* String to be send to ttweet server */
   char *username;                       /* Client username */
   char inputHashtags[MAX_HASHTAG_LEN];  /* Array of all hashtags submitted */
@@ -166,7 +166,7 @@ int main(int argc, char *argv[])
     if (clientCommandCode == REQ_EXIT)
     { /* Client entered exit command */
       printf("Exiting client...\n");
-      waitFor(3);
+      wait_for(3);
       close(sock);
       exit(0);
     }

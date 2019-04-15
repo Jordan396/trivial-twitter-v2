@@ -31,15 +31,14 @@
 void die_with_error(char *errorMessage);
 int persist_with_error(char *errorMessage);
 int send_payload(int sock, cJSON *jobjToSend);
-void waitFor(unsigned int secs);
+void wait_for(unsigned int secs);
 void receive_response(int sock, char *objReceived);
 #endif
 
 /**
  * @brief Reads user input from stdin
  *
- * Description Reads user input from stdin. Also,
- * checks if user input exceeds maximum buffer size.
+ * This function checks if user input exceeds maximum buffer size.
  *
  * @param clientInput Buffer to store user input.
  * @return int 0 if error occurred, 1 otherwise.
@@ -49,7 +48,6 @@ int get_client_input(char *clientInput);
 /**
  * @brief Parses command from user input
  *
- * Description Parses command from user input.
  * Hashtag and tweet message fields are saved accordingly.
  *
  * @param ttweetString Tweet message to be sent.
@@ -60,9 +58,9 @@ int parse_client_command(char inputHashtags[], char ttweetString[]);
 
 /**
  * @brief Parses hashtags from user command
- *
- * Description Parses hashtags from user command. Valid hashtags are stored in
- * the string array validHashtags. Hashtag count is tracked using numValidHashtags.
+ * 
+ * Valid hashtags are stored in the string array validHashtags. 
+ * Hashtag count is tracked using numValidHashtags.
  *
  * @param validHashtags Valid hashtags
  * @param numValidHashtags Number of hashtags in validHashtags
@@ -74,7 +72,7 @@ int parse_hashtags(char *validHashtags[], int *numValidHashtags, char *inputHash
 /**
  * @brief Checks for duplicates in string array
  *
- * Description If a hashtag appears more than once, an error is thrown.
+ * If a hashtag appears more than once, an error is thrown.
  *
  * @param stringArray Strings in an array
  * @param numStringsInArray Number of strings in stringArray
@@ -85,7 +83,7 @@ int has_duplicate_string(char *stringArray[], int numStringsInArray); /* Checks 
 /**
  * @brief Checks if hashtag #ALL exists
  *
- * Description Checks if hashtag #ALL exists in validHashtags.
+ * Checks if hashtag #ALL exists in validHashtags.
  * This is necessary since users cannot tweet with #ALL.
  *
  * @param validHashtags Valid hashtags
@@ -97,7 +95,7 @@ int is_hashtag_all_exists(char *validHashtags[], int numValidHashtags);
 /**
  * @brief  Resets client variables for next command 
  *
- * Description Variables relating to a particular ttweet command
+ * Variables relating to a particular ttweet command
  * are cleared/reset to prepare for next command.
  *
  * @param clientCommandSuccess Boolean to check command validity.
@@ -111,7 +109,7 @@ void reset_client_variables(int *clientCommandSuccess, char *validHashtags[], in
 /**
  * @brief Deallocates memory from a dynamic string array
  *
- * Description First numStringsInArray elements from stringArray are freed.
+ * First numStringsInArray elements from stringArray are freed.
  *
  * @param stringArray String array which memory is to be deallocated
  * @param numStringsInArray Number of elements to free in the array
@@ -122,7 +120,7 @@ void deallocate_string_array(char *stringArray[], int numStringsInArray);
 /**
  * @brief Save current hashtag buffer
  *
- * Description Allocates memory to validHashtag and stores the current hashtag buffer.
+ * Allocates memory to validHashtag and stores the current hashtag buffer.
  * Prepare the hashtag buffer to receive the next hashtag.
  *
  * @param currentHashtagBuffer Buffer to store the current hashtag
@@ -136,13 +134,12 @@ void save_current_hashtag(char *currentHashtagBuffer, int *currentHashtagBufferI
 /**
  * @brief Creates payload to send to server
  *
- * Description Creates a JSON object payload.
  * Depending on client command, additional fields are added
  * to the JSON object. This object is to be sent to the server.
  *
  * @param jobjToSend cJSON object to be sent
  * @param commandCode Request code of command
- * @username Client username
+ * @param username Client username
  * @param userIdx Client user index
  * @param ttweetString Tweet message to be sent.
  * @param validHashtags Valid hashtags
@@ -154,7 +151,7 @@ void create_json_client_payload(cJSON *jobjToSend, int commandCode, char *userna
 /**
  * @brief Handles server response
  *
- * Description Handles server response according to response code.
+ * Handles server response according to response code.
  *
  * @param jobjReceived cJSON object received from server
  * @param userIdx Client user index
@@ -165,7 +162,7 @@ void handle_server_response(cJSON *jobjReceived, int *userIdx);
 /**
  * @brief Parses and validates tweet command 
  *
- * Description Parses tweet command and saves tweet message and
+ * Parses tweet command and saves tweet message and
  * hashtags. Also checks for errors in user input.
  *
  * @param clientInput Buffer to store user input.
@@ -179,7 +176,7 @@ int check_tweet_cmd(char clientInput[], int charIdx, char inputHashtags[], char 
 /**
  * @brief Parses and validates subscribe command 
  *
- * Description Parses subscribe command and saves target hashtag. 
+ * Parses subscribe command and saves target hashtag. 
  * Also checks for errors in user input.
  *
  * @param clientInput Buffer to store user input.
@@ -192,7 +189,7 @@ int check_subscribe_cmd(char clientInput[], int charIdx, char inputHashtags[]);
 /**
  * @brief Parses and validates unsubscribe command 
  *
- * Description Parses unsubscribe command and saves target hashtag. 
+ * Parses unsubscribe command and saves target hashtag. 
  * Also checks for errors in user input.
  *
  * @param clientInput Buffer to store user input.
@@ -205,7 +202,7 @@ int check_unsubscribe_cmd(char clientInput[], int charIdx, char inputHashtags[])
 /**
  * @brief Parses and validates timeline command 
  *
- * Description Parses timeline command.
+ * Parses timeline command.
  * Also checks for errors in user input.
  *
  * @param endOfCmd Boolean to check if end of command reached.
@@ -216,7 +213,7 @@ int check_timeline_cmd(int endOfCmd);
 /**
  * @brief Parses and validates exit command 
  *
- * Description Parses exit command.
+ * Parses exit command.
  * Also checks for errors in user input.
  *
  * @param endOfCmd Boolean to check if end of command reached.

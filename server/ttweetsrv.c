@@ -55,8 +55,8 @@ void handle_ttweet_client(int clntSocket);       /* Handles connection with clie
 void reject_ttweet_client(int clntSocket);       /* Sends a rejection message and closes connection */
 
 /* functions to initialize global variables */
-void initialize_user_array();   /* Initialize activeUser array */
-void initialize_latest_tweet(); /* Initialize latest tweet */
+void initialize_user_array();   /* Initialize activeUsers array */
+void initialize_latest_tweet(); /* Initialize latestTweet */
 
 /* functions to support transmission of data */
 void create_json_server_payload(cJSON *jobjToSend, int commandCode, int userIdx, char *detailedMessage); /* Creates a JSON payload to be send to client */

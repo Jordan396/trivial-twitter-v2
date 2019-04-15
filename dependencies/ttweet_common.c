@@ -25,7 +25,7 @@
 void die_with_error(char *errorMessage);
 int persist_with_error(char *errorMessage);
 int send_payload(int sock, cJSON *jobjToSend);
-void waitFor(unsigned int secs);
+void wait_for(unsigned int secs);
 void receive_response(int sock, char *objReceived);
 
 /** \copydoc die_with_error */
@@ -58,7 +58,7 @@ int send_payload(int sock, cJSON *jobjToSend)
 }
 
 /** \copydoc waitFor */
-void waitFor(unsigned int secs)
+void wait_for(unsigned int secs)
 {
   unsigned int retTime = time(0) + secs; // Get finishing time.
   while (time(0) < retTime)
@@ -77,7 +77,7 @@ void receive_response(int sock, char *objReceived)
   {
     recv(sock, buffer, RCV_BUF_SIZE, 0);
     bytesToRecv = atoi(buffer);
-    waitFor(3);
+    wait_for(3);
   }
 
   while (bytesToRecv > 0)

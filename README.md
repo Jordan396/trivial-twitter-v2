@@ -55,5 +55,7 @@ Once a connection has been established, the client supports the following comman
   - First RCV_BUF_SIZE bytes are to indicate how much data the sender intends to send.
   - Remaining bytes are for the actual payload sent.
 
+---
+
 ## License
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details
